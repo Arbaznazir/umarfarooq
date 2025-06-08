@@ -1,0 +1,28 @@
+{
+  "name": "Umar Farooq Al Madani - Islamic Studies",
+  "short_name": "Islamic Studies",
+  "description": "Islamic Studies Website featuring Quranic interpretations, Hadith discussions, and Islamic teachings by Umar Farooq Al Madani",
+  "icons": [
+    {
+      "src": "/fevicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#047857",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "religion", "islamic", "studies"]
+} 

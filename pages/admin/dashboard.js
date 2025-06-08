@@ -1,0 +1,881 @@
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import Head from "next/head";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { signOut } from "firebase/auth";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  deleteDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import { auth, db } from "../../lib/firebase";
+import {
+  Plus,
+  Book,
+  FileText,
+  LogOut,
+  Edit,
+  Trash2,
+  Star,
+  Save,
+  X,
+  BarChart3,
+  Users,
+  Eye,
+  Calendar,
+  TrendingUp,
+  Settings,
+  Crown,
+  Sparkles,
+} from "lucide-react";
+import toast, { Toaster } from "react-hot-toast";
+import FaviconHead from "../../components/FaviconHead";
+import {
+  AdminTextHelper,
+  IslamicTextRenderer,
+} from "../../components/IslamicTextRenderer";
+
+export default function AdminDashboard() {
+  const [user, loading] = useAuthState(auth);
+  const [activeTab, setActiveTab] = useState("posts");
+  const [posts, setPosts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [editingPost, setEditingPost] = useState(null);
+  const router = useRouter();
+
+  // Form states
+  const [postTitle, setPostTitle] = useState("");
+  const [postContent, setPostContent] = useState("");
+  const [postCategory, setPostCategory] = useState("");
+  const [postLanguage, setPostLanguage] = useState("english");
+  const [postFeatured, setPostFeatured] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryDescription, setCategoryDescription] = useState("");
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/admin");
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user) {
+      fetchPosts();
+      fetchCategories();
+    }
+  }, [user]);
+
+  const fetchPosts = async () => {
+    try {
+      const postsQuery = query(
+        collection(db, "posts"),
+        orderBy("createdAt", "desc")
+      );
+      const snapshot = await getDocs(postsQuery);
+      const postsData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setPosts(postsData);
+    } catch (error) {
+      // Error fetching posts
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "categories"));
+      const categoriesData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setCategories(categoriesData);
+    } catch (error) {
+      // Error fetching categories
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push("/admin");
+    } catch (error) {
+      // Logout error
+    }
+  };
+
+  const handlePostSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!postTitle || !postContent || !postCategory) {
+      toast.error("Please fill all required fields");
+      return;
+    }
+
+    try {
+      const postData = {
+        title: postTitle,
+        content: postContent,
+        category: postCategory,
+        language: postLanguage,
+        featured: postFeatured,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (editingPost) {
+        await updateDoc(doc(db, "posts", editingPost.id), {
+          ...postData,
+          createdAt: editingPost.createdAt, // Keep original creation date
+        });
+        toast.success("Post updated successfully!");
+        setEditingPost(null);
+      } else {
+        await addDoc(collection(db, "posts"), postData);
+        toast.success("Post created successfully!");
+      }
+
+      resetPostForm();
+      fetchPosts();
+    } catch (error) {
+      // Error saving post
+      toast.error("Error saving post");
+    }
+  };
+
+  const handleCategorySubmit = async (e) => {
+    e.preventDefault();
+
+    if (!categoryName) {
+      toast.error("Please enter category name");
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "categories"), {
+        name: categoryName,
+        description: categoryDescription,
+        createdAt: serverTimestamp(),
+      });
+
+      toast.success("Category created successfully!");
+      setCategoryName("");
+      setCategoryDescription("");
+      setShowCategoryForm(false);
+      fetchCategories();
+    } catch (error) {
+      // Error creating category
+      toast.error("Error creating category");
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    if (window.confirm("Are you sure you want to delete this post?")) {
+      try {
+        await deleteDoc(doc(db, "posts", postId));
+        toast.success("Post deleted successfully!");
+        fetchPosts();
+      } catch (error) {
+        // Error deleting post
+        toast.error("Error deleting post");
+      }
+    }
+  };
+
+  const handleEditPost = (post) => {
+    setEditingPost(post);
+    setPostTitle(post.title);
+    setPostContent(post.content);
+    setPostCategory(post.category);
+    setPostLanguage(post.language);
+    setPostFeatured(post.featured || false);
+    setShowPostForm(true);
+  };
+
+  const resetPostForm = () => {
+    setPostTitle("");
+    setPostContent("");
+    setPostCategory("");
+    setPostLanguage("english");
+    setPostFeatured(false);
+    setShowPreview(false);
+    setShowPostForm(false);
+    setEditingPost(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50/30 to-emerald-50/50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-4 border-islamic-green mx-auto mb-4"></div>
+          <p className="text-islamic-green font-semibold text-lg">
+            Loading Dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50/30 to-emerald-50/50">
+      <Head>
+        <title>Admin Dashboard - Umar Farooq Al Madani</title>
+      </Head>
+      <FaviconHead />
+
+      <Toaster position="top-right" />
+
+      {/* Premium Header */}
+      <header className="relative bg-gradient-to-r from-islamic-green via-emerald-600 to-green-600 shadow-2xl overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-20">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M30 5l8 24h25l-20 15 8 24-20-15-20 15 8-24-20-15h25z'/%3E%3C/g%3E%3C/svg%3E")`,
+            }}
+          ></div>
+        </div>
+
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-8">
+            <div className="flex items-center space-x-6">
+              <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-4 shadow-xl">
+                <Crown className="h-10 w-10 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl md:text-4xl font-black text-white drop-shadow-lg">
+                  Admin Dashboard
+                </h1>
+                <p className="text-white/90 text-lg font-medium mt-1">
+                  Welcome back, <span className="font-bold">{user.email}</span>
+                </p>
+                <div className="flex items-center mt-2 text-white/80 text-sm">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <div className="hidden md:flex items-center space-x-6 text-white/90">
+                <div className="text-center">
+                  <div className="text-2xl font-bold">{posts.length}</div>
+                  <div className="text-xs uppercase tracking-wide">Posts</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold">{categories.length}</div>
+                  <div className="text-xs uppercase tracking-wide">
+                    Categories
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleLogout}
+                className="flex items-center px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-xl hover:bg-white/30 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <LogOut className="h-5 w-5 mr-2" />
+                <span className="font-semibold">Logout</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Decorative Elements */}
+        <div className="absolute top-4 right-4 w-32 h-32 bg-white/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-4 left-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
+      </header>
+
+      {/* Stats Cards */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-500 text-sm font-medium">Total Posts</p>
+                <p className="text-3xl font-black text-gray-900">
+                  {posts.length}
+                </p>
+                <p className="text-islamic-green text-sm font-semibold mt-1">
+                  <TrendingUp className="h-4 w-4 inline mr-1" />
+                  Active
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-islamic-green/20 to-emerald-200/40 rounded-xl p-3">
+                <FileText className="h-8 w-8 text-islamic-green" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-500 text-sm font-medium">Categories</p>
+                <p className="text-3xl font-black text-gray-900">
+                  {categories.length}
+                </p>
+                <p className="text-blue-600 text-sm font-semibold mt-1">
+                  <Book className="h-4 w-4 inline mr-1" />
+                  Topics
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-100 to-indigo-200 rounded-xl p-3">
+                <Book className="h-8 w-8 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-500 text-sm font-medium">Featured</p>
+                <p className="text-3xl font-black text-gray-900">
+                  {posts.filter((post) => post.featured).length}
+                </p>
+                <p className="text-amber-600 text-sm font-semibold mt-1">
+                  <Star className="h-4 w-4 inline mr-1" />
+                  Special
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-amber-100 to-orange-200 rounded-xl p-3">
+                <Star className="h-8 w-8 text-amber-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-500 text-sm font-medium">Languages</p>
+                <p className="text-3xl font-black text-gray-900">
+                  {
+                    new Set(posts.map((post) => post.language || "english"))
+                      .size
+                  }
+                </p>
+                <p className="text-purple-600 text-sm font-semibold mt-1">
+                  <Users className="h-4 w-4 inline mr-1" />
+                  Diverse
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-100 to-pink-200 rounded-xl p-3">
+                <Users className="h-8 w-8 text-purple-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Premium Tabs */}
+        <div className="bg-white rounded-2xl shadow-xl p-2 mb-8 border border-gray-100">
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setActiveTab("posts")}
+              className={`flex items-center px-6 py-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
+                activeTab === "posts"
+                  ? "bg-gradient-to-r from-islamic-green to-emerald-600 text-white shadow-lg transform scale-105"
+                  : "text-gray-600 hover:text-islamic-green hover:bg-gray-50"
+              }`}
+            >
+              <FileText className="h-5 w-5 mr-2" />
+              Posts Management
+              {activeTab === "posts" && (
+                <div className="ml-2 bg-white/20 rounded-full px-2 py-1 text-xs">
+                  {posts.length}
+                </div>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("categories")}
+              className={`flex items-center px-6 py-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
+                activeTab === "categories"
+                  ? "bg-gradient-to-r from-islamic-green to-emerald-600 text-white shadow-lg transform scale-105"
+                  : "text-gray-600 hover:text-islamic-green hover:bg-gray-50"
+              }`}
+            >
+              <Book className="h-5 w-5 mr-2" />
+              Categories
+              {activeTab === "categories" && (
+                <div className="ml-2 bg-white/20 rounded-full px-2 py-1 text-xs">
+                  {categories.length}
+                </div>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Posts Tab */}
+        {activeTab === "posts" && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            {/* Posts Header */}
+            <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-black text-gray-900 mb-2">
+                    Posts Management
+                  </h2>
+                  <p className="text-gray-600">
+                    Create, edit, and manage your Islamic content
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPostForm(true)}
+                  className="flex items-center px-6 py-3 bg-gradient-to-r from-islamic-green to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-islamic-green transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  <span className="font-semibold">Create New Post</span>
+                  <Sparkles className="h-4 w-4 ml-2" />
+                </button>
+              </div>
+            </div>
+
+            {/* Posts List */}
+            <div className="p-8">
+              {posts.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Posts Yet
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Start creating your first Islamic post to share knowledge
+                    with the Ummah.
+                  </p>
+                  <button
+                    onClick={() => setShowPostForm(true)}
+                    className="flex items-center mx-auto px-6 py-3 bg-islamic-green text-white rounded-xl hover:bg-emerald-600 transition-colors duration-300"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Create First Post
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Title
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Category
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Language
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {posts.map((post) => (
+                        <tr
+                          key={post.id}
+                          className="hover:bg-gray-50 transition-colors duration-200"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center">
+                              {post.featured && (
+                                <Star className="h-4 w-4 text-amber-500 mr-2" />
+                              )}
+                              <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {post.title}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-islamic-green text-white">
+                              {post.category}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500 capitalize">
+                            {post.language || "english"}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            {post.createdAt?.toDate?.()?.toLocaleDateString() ||
+                              "Recent"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center space-x-3">
+                              <button
+                                onClick={() => handleEditPost(post)}
+                                className="text-islamic-green hover:text-emerald-600 transition-colors duration-200"
+                              >
+                                <Edit className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePost(post.id)}
+                                className="text-red-600 hover:text-red-800 transition-colors duration-200"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Categories Tab */}
+        {activeTab === "categories" && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            {/* Categories Header */}
+            <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-black text-gray-900 mb-2">
+                    Categories Management
+                  </h2>
+                  <p className="text-gray-600">
+                    Organize your Islamic content into meaningful categories
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCategoryForm(true)}
+                  className="flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <Plus className="h-5 w-5 mr-2" />
+                  <span className="font-semibold">Create Category</span>
+                  <Book className="h-4 w-4 ml-2" />
+                </button>
+              </div>
+            </div>
+
+            {/* Categories List */}
+            <div className="p-8">
+              {categories.length === 0 ? (
+                <div className="text-center py-12">
+                  <Book className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No Categories Yet
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Create categories to organize your Islamic content
+                    effectively.
+                  </p>
+                  <button
+                    onClick={() => setShowCategoryForm(true)}
+                    className="flex items-center mx-auto px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-indigo-600 transition-colors duration-300"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Create First Category
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {categories.map((category) => (
+                    <div
+                      key={category.id}
+                      className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
+                    >
+                      <div className="flex items-center mb-4">
+                        <div className="bg-blue-100 rounded-lg p-3 mr-4">
+                          <Book className="h-6 w-6 text-blue-600" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900">
+                          {category.name}
+                        </h3>
+                      </div>
+                      <p className="text-gray-600 text-sm leading-relaxed">
+                        {category.description || "No description provided"}
+                      </p>
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <span className="text-xs text-gray-500">
+                          Created:{" "}
+                          {category.createdAt
+                            ?.toDate?.()
+                            ?.toLocaleDateString() || "Recently"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Post Form Modal */}
+      {showPostForm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-6xl bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-islamic-green to-emerald-600 px-8 py-6 text-white sticky top-0 z-10">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-white/20 rounded-xl p-3">
+                    {editingPost ? (
+                      <Edit className="h-6 w-6" />
+                    ) : (
+                      <Plus className="h-6 w-6" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black">
+                      {editingPost ? "Edit Post" : "Create New Post"}
+                    </h3>
+                    <p className="text-white/80 text-sm">
+                      {editingPost
+                        ? "Update your Islamic content"
+                        : "Share knowledge with the Ummah"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={resetPostForm}
+                  className="bg-white/20 hover:bg-white/30 rounded-xl p-2 transition-colors duration-200"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-8">
+              <form onSubmit={handlePostSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2">
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      Post Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={postTitle}
+                      onChange={(e) => setPostTitle(e.target.value)}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-islamic-green focus:border-islamic-green transition-all duration-200 text-lg"
+                      placeholder="Enter an inspiring title..."
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">
+                        Category *
+                      </label>
+                      <select
+                        value={postCategory}
+                        onChange={(e) => setPostCategory(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-islamic-green focus:border-islamic-green transition-all duration-200"
+                        required
+                      >
+                        <option value="">Select Category</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.name}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">
+                        Language
+                      </label>
+                      <select
+                        value={postLanguage}
+                        onChange={(e) => setPostLanguage(e.target.value)}
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-islamic-green focus:border-islamic-green transition-all duration-200"
+                      >
+                        <option value="english">English</option>
+                        <option value="arabic">Arabic</option>
+                        <option value="urdu">Urdu</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="featured"
+                        checked={postFeatured}
+                        onChange={(e) => setPostFeatured(e.target.checked)}
+                        className="h-5 w-5 text-islamic-green focus:ring-islamic-green border-gray-300 rounded"
+                      />
+                      <label
+                        htmlFor="featured"
+                        className="ml-3 block text-sm font-bold text-gray-900"
+                      >
+                        Featured Post
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-sm font-bold text-gray-700">
+                      Content *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(!showPreview)}
+                      className="flex items-center px-4 py-2 text-sm text-islamic-green hover:text-emerald-600 font-semibold bg-green-50 hover:bg-green-100 rounded-lg transition-colors duration-200"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      {showPreview ? "Hide Preview" : "Show Preview"}
+                    </button>
+                  </div>
+
+                  <AdminTextHelper />
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
+                        Editor
+                      </label>
+                      <textarea
+                        value={postContent}
+                        onChange={(e) => setPostContent(e.target.value)}
+                        rows={16}
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-islamic-green focus:border-islamic-green resize-vertical font-mono text-sm transition-all duration-200"
+                        placeholder="Enter post content. Use ///quran text ///, ///hadith text ///, ///urdu text /// for special formatting."
+                        required
+                      />
+                    </div>
+
+                    {showPreview && (
+                      <div>
+                        <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wide">
+                          Live Preview
+                        </label>
+                        <div className="border-2 border-gray-200 rounded-xl p-4 bg-gray-50 min-h-[400px] max-h-[500px] overflow-y-auto">
+                          <IslamicTextRenderer text={postContent} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={resetPostForm}
+                    className="px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-colors duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex items-center px-6 py-3 bg-gradient-to-r from-islamic-green to-emerald-600 text-white rounded-xl hover:from-emerald-600 hover:to-islamic-green transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold"
+                  >
+                    <Save className="h-5 w-5 mr-2" />
+                    {editingPost ? "Update Post" : "Create Post"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Form Modal */}
+      {showCategoryForm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-white/20 rounded-xl p-3">
+                    <Book className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black">Create New Category</h3>
+                    <p className="text-white/80 text-sm">
+                      Organize your Islamic content effectively
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCategoryForm(false)}
+                  className="bg-white/20 hover:bg-white/30 rounded-xl p-2 transition-colors duration-200"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-8">
+              <form onSubmit={handleCategorySubmit} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Category Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={categoryName}
+                    onChange={(e) => setCategoryName(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all duration-200 text-lg"
+                    placeholder="e.g., Quran, Hadith, Islamic History..."
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={categoryDescription}
+                    onChange={(e) => setCategoryDescription(e.target.value)}
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 resize-vertical transition-all duration-200"
+                    placeholder="Describe what this category covers..."
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryForm(false)}
+                    className="px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold transition-colors duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold"
+                  >
+                    <Save className="h-5 w-5 mr-2" />
+                    Create Category
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,62 @@
+{
+  "name": "umar-farooq-islamic-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Islamic Studies Website by Umar Farooq Al Madani - A beautiful, responsive platform for sharing Islamic content",
+  "author": "Umar Farooq Al Madani",
+  "keywords": ["islamic", "studies", "quran", "hadith", "nextjs", "firebase"],
+  "homepage": "https://your-domain.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/umar-farooq-islamic-website.git"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
+    "type-check": "tsc --noEmit",
+    "build:analyze": "ANALYZE=true next build",
+    "export": "next export",
+    "serve": "next start -p 3000",
+    "clean": "rmdir /s /q .next 2>nul & rmdir /s /q out 2>nul & echo Clean completed",
+    "test": "echo \"No tests specified\" && exit 0",
+    "postbuild": "echo \"Build completed successfully!\"",
+    "deploy:production": "node scripts/deploy-production.js",
+    "init:database": "node -e \"fetch('http://localhost:3000/api/init-database', {method: 'POST'}).then(r => r.json()).then(console.log)\"",
+    "setup:production": "npm run build && npm run deploy:production"
+  },
+  "dependencies": {
+    "next": "14.0.4",
+    "react": "^18",
+    "react-dom": "^18",
+    "firebase": "^10.7.1",
+    "react-firebase-hooks": "^5.1.1",
+    "react-hot-toast": "^2.4.1",
+    "lucide-react": "^0.294.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.0.1",
+    "eslint": "^8",
+    "eslint-config-next": "14.0.4",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+} 
