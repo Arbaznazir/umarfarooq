@@ -2,45 +2,78 @@
   "version": 2,
   "name": "umar-farooq-islamic-website",
   "builds": [
-    { "src": "package.json", "use": "@vercel/next" }
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
   ],
-
   "headers": [
-    // 1) /admin security headers
     {
       "source": "/admin/(.*)",
       "headers": [
-        { "key": "X-Frame-Options",        "value": "DENY"   },
-        { "key": "X-Content-Type-Options", "value": "nosniff"}
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
       ]
     },
-
-    // 2) global security headers
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Referrer-Policy",         "value": "strict-origin-when-cross-origin" },
-        { "key": "X-XSS-Protection",        "value": "1; mode=block"                  }
-        // …etc
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
       ]
     },
-
-    // 3) CORS for API routes
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin",   "value": "*" },
-        { "key": "Access-Control-Allow-Methods",  "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers",  "value": "X-Requested-With, Content-Type, Authorization" }
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Authorization"
+        }
       ]
     }
   ],
-
   "rewrites": [
-    { "source": "/sitemap.xml",  "destination": "/api/sitemap" },
-    { "source": "/robots.txt",   "destination": "/api/robots" }
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/robots"
+    }
   ],
-
-  "regions": ["iad1"],
-  "github": { "autoAlias": false }
+  "regions": [
+    "iad1"
+  ],
+  "github": {
+    "autoAlias": false
+  }
 }
