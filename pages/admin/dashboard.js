@@ -815,6 +815,7 @@ export default function AdminDashboard() {
 
                               const result = await response.json();
                               if (result.success) {
+                                // Store the complete result including base64 content for Vercel
                                 setPostPdf(result);
                                 toast.success("PDF uploaded successfully!");
                               } else {

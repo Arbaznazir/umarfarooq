@@ -77,6 +77,27 @@ export default function PostPDFViewer({ pdfAttachment }) {
               className="w-full h-96 rounded-lg shadow-inner"
               style={{ backgroundColor: "#ffffff" }}
             />
+
+            {/* Fallback message for browsers that don't support embed */}
+            <noscript>
+              <div className="w-full h-96 bg-gray-100 rounded-lg flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">
+                    PDF preview not available
+                  </p>
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </a>
+                </div>
+              </div>
+            </noscript>
           </div>
 
           {/* Collapse Button */}
