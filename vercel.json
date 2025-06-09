@@ -73,6 +73,14 @@
   "regions": [
     "iad1"
   ],
+  "functions": {
+    "pages/api/upload-pdf.js": {
+      "maxDuration": 30
+    },
+    "pages/api/serve-pdf/[filename].js": {
+      "maxDuration": 30
+    }
+  },
   "github": {
     "autoAlias": false
   }

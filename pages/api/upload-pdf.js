@@ -14,8 +14,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use /tmp for Vercel, local uploads for development
-    const uploadDir = process.env.VERCEL ? "/tmp" : "./public/uploads/pdfs";
+    // Enhanced environment detection
+    const isVercel =
+      process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION;
+    const uploadDir = isVercel ? "/tmp" : "./public/uploads/pdfs";
+
+    console.log("Environment check:", {
+      isVercel: !!isVercel,
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      NOW_REGION: process.env.NOW_REGION,
+      uploadDir,
+    });
 
     const form = new IncomingForm({
       uploadDir: uploadDir,
@@ -24,24 +34,35 @@ export default async function handler(req, res) {
     });
 
     // Ensure upload directory exists (only for local development)
-    if (!process.env.VERCEL) {
+    if (!isVercel) {
       try {
         await fs.access(uploadDir);
       } catch {
         await fs.mkdir(uploadDir, { recursive: true });
+        console.log("Created upload directory:", uploadDir);
       }
     }
 
     const [fields, files] = await form.parse(req);
+    console.log("Files parsed:", Object.keys(files));
 
     const file = Array.isArray(files.pdf) ? files.pdf[0] : files.pdf;
 
     if (!file) {
+      console.log("No file found in upload");
       return res.status(400).json({ error: "No PDF file uploaded" });
     }
 
+    console.log("File details:", {
+      originalFilename: file.originalFilename,
+      mimetype: file.mimetype,
+      size: file.size,
+      filepath: file.filepath,
+    });
+
     // Validate file type
     if (!file.mimetype?.includes("pdf")) {
+      console.log("Invalid file type:", file.mimetype);
       return res.status(400).json({ error: "Only PDF files are allowed" });
     }
 
@@ -51,16 +72,26 @@ export default async function handler(req, res) {
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_");
     const newFilename = `${timestamp}_${sanitizedName}`;
 
-    if (process.env.VERCEL) {
+    if (isVercel) {
+      console.log("Processing for Vercel deployment");
+
       // For Vercel deployment - read file content and encode as base64
       const fileContent = await fs.readFile(file.filepath);
       const base64Content = fileContent.toString("base64");
 
+      console.log("File processed:", {
+        filename: newFilename,
+        originalName,
+        size: file.size,
+        base64Length: base64Content.length,
+      });
+
       // Clean up temp file
       try {
         await fs.unlink(file.filepath);
+        console.log("Temp file cleaned up");
       } catch (error) {
-        console.log("Temp file cleanup error (non-critical):", error);
+        console.log("Temp file cleanup error (non-critical):", error.message);
       }
 
       // Return file data that can be stored in database
@@ -72,13 +103,22 @@ export default async function handler(req, res) {
         size: file.size,
         content: base64Content, // This should be stored in your database
         isBase64: true,
+        environment: "vercel",
       });
     } else {
+      console.log("Processing for local development");
+
       // Local development - use file system
       const newPath = path.join(uploadDir, newFilename);
       await fs.rename(file.filepath, newPath);
 
       const fileUrl = `/uploads/pdfs/${newFilename}`;
+
+      console.log("File saved locally:", {
+        filename: newFilename,
+        path: newPath,
+        url: fileUrl,
+      });
 
       res.status(200).json({
         success: true,
@@ -86,10 +126,15 @@ export default async function handler(req, res) {
         originalName: originalName,
         url: fileUrl,
         size: file.size,
+        environment: "local",
       });
     }
   } catch (error) {
     console.error("PDF upload error:", error);
-    res.status(500).json({ error: "Failed to upload PDF" });
+    res.status(500).json({
+      error: "Failed to upload PDF",
+      details: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
   }
 }

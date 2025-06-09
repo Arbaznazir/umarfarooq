@@ -791,9 +791,28 @@ export default function AdminDashboard() {
 
                 {/* PDF Attachment Section */}
                 <div className="border-t border-gray-200 pt-6">
-                  <label className="block text-sm font-bold text-gray-700 mb-4">
-                    PDF Attachment (Optional)
-                  </label>
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-sm font-bold text-gray-700">
+                      PDF Attachment (Optional)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const response = await fetch("/api/test-upload");
+                          const result = await response.json();
+                          console.log("Environment test:", result);
+                          toast.success(`Environment: ${result.environment}`);
+                        } catch (error) {
+                          console.error("Test failed:", error);
+                          toast.error("Test failed");
+                        }
+                      }}
+                      className="text-xs px-3 py-1 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                    >
+                      Test Environment
+                    </button>
+                  </div>
 
                   {!postPdf ? (
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-islamic-green transition-colors duration-200">
@@ -804,25 +823,44 @@ export default function AdminDashboard() {
                           const file = e.target.files[0];
                           if (file && file.type === "application/pdf") {
                             setPdfUploading(true);
+                            console.log("Starting PDF upload:", {
+                              fileName: file.name,
+                              fileSize: file.size,
+                              fileType: file.type,
+                            });
+
                             try {
                               const formData = new FormData();
                               formData.append("pdf", file);
 
+                              console.log("Sending upload request...");
                               const response = await fetch("/api/upload-pdf", {
                                 method: "POST",
                                 body: formData,
                               });
 
+                              console.log(
+                                "Upload response status:",
+                                response.status
+                              );
                               const result = await response.json();
+                              console.log("Upload result:", result);
+
                               if (result.success) {
                                 // Store the complete result including base64 content for Vercel
                                 setPostPdf(result);
-                                toast.success("PDF uploaded successfully!");
+                                toast.success(
+                                  `PDF uploaded successfully! (${result.environment})`
+                                );
                               } else {
+                                console.error("Upload failed:", result);
                                 toast.error(result.error || "Upload failed");
                               }
                             } catch (error) {
-                              toast.error("Failed to upload PDF");
+                              console.error("Upload error:", error);
+                              toast.error(
+                                "Failed to upload PDF: " + error.message
+                              );
                             } finally {
                               setPdfUploading(false);
                             }
