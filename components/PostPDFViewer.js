@@ -1,8 +1,19 @@
-import { useState } from "react";
-import { FileText, Download, Eye, Maximize2, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  FileText,
+  Download,
+  Eye,
+  Maximize2,
+  X,
+  AlertTriangle,
+  ExternalLink,
+} from "lucide-react";
 
 export default function PostPDFViewer({ pdfAttachment }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   if (!pdfAttachment) return null;
 
@@ -15,6 +26,53 @@ export default function PostPDFViewer({ pdfAttachment }) {
   };
 
   const pdfUrl = `/api/serve-pdf/${pdfAttachment.filename}`;
+
+  const handleViewPDF = async () => {
+    if (!isExpanded) {
+      setIsLoading(true);
+      setHasError(false);
+
+      try {
+        // Test if the PDF is accessible
+        const response = await fetch(pdfUrl, { method: "HEAD" });
+        if (!response.ok) {
+          throw new Error(`PDF not accessible (${response.status})`);
+        }
+        setIsExpanded(true);
+      } catch (error) {
+        console.error("PDF access error:", error);
+        setHasError(true);
+        setErrorMessage(error.message || "Failed to load PDF");
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setIsExpanded(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(pdfUrl);
+      if (!response.ok) {
+        throw new Error("Download failed");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = pdfAttachment.originalName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Download error:", error);
+      // Fallback to direct link
+      window.open(pdfUrl, "_blank");
+    }
+  };
 
   return (
     <div className="my-8 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
@@ -32,26 +90,41 @@ export default function PostPDFViewer({ pdfAttachment }) {
               <p className="text-sm text-gray-600">
                 PDF Document • {formatFileSize(pdfAttachment.size)}
               </p>
+              {(pdfAttachment.storageType === "metadata_only" ||
+                (!pdfAttachment.content && !pdfAttachment.contentDocId)) && (
+                <p className="text-xs text-amber-600 font-medium">
+                  ⚠️ Large file - download for viewing
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center px-3 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200 text-sm font-medium"
+              onClick={handleViewPDF}
+              disabled={isLoading}
+              className="flex items-center px-3 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Eye className="h-4 w-4 mr-2" />
-              {isExpanded ? "Hide" : "View"} PDF
+              {isLoading ? (
+                <>
+                  <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Eye className="h-4 w-4 mr-2" />
+                  {isExpanded ? "Hide" : "View"} PDF
+                </>
+              )}
             </button>
 
-            <a
-              href={pdfUrl}
-              download={pdfAttachment.originalName}
+            <button
+              onClick={handleDownload}
               className="flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200 text-sm font-medium"
             >
               <Download className="h-4 w-4 mr-2" />
               Download
-            </a>
+            </button>
 
             <a
               href={`/pdf/${pdfAttachment.filename}`}
@@ -66,38 +139,75 @@ export default function PostPDFViewer({ pdfAttachment }) {
         </div>
       </div>
 
+      {/* Error Message */}
+      {hasError && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-400 mr-3" />
+            <div>
+              <h4 className="text-red-800 font-medium">PDF Viewing Error</h4>
+              <p className="text-red-700 text-sm mt-1">
+                {errorMessage}. Please try downloading the file instead.
+              </p>
+              <div className="mt-3 flex space-x-3">
+                <button
+                  onClick={handleDownload}
+                  className="text-sm bg-red-100 text-red-800 px-3 py-1 rounded hover:bg-red-200 transition-colors"
+                >
+                  Download PDF
+                </button>
+                <a
+                  href={`/pdf/${pdfAttachment.filename}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 transition-colors inline-flex items-center"
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  Open in New Tab
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PDF Viewer */}
-      {isExpanded && (
+      {isExpanded && !hasError && (
         <div className="relative">
           <div className="bg-gray-100 p-4">
-            {/* Simple embed approach that works in most browsers */}
-            <embed
-              src={pdfUrl}
-              type="application/pdf"
-              className="w-full h-96 rounded-lg shadow-inner"
-              style={{ backgroundColor: "#ffffff" }}
-            />
+            {/* Enhanced PDF viewer with multiple fallbacks */}
+            <div className="relative w-full h-96 rounded-lg shadow-inner bg-white">
+              <iframe
+                src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
+                className="w-full h-full rounded-lg"
+                title={`PDF Viewer - ${pdfAttachment.originalName}`}
+                onError={() => {
+                  setHasError(true);
+                  setErrorMessage("PDF viewer failed to load");
+                }}
+              />
 
-            {/* Fallback message for browsers that don't support embed */}
-            <noscript>
-              <div className="w-full h-96 bg-gray-100 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-4">
-                    PDF preview not available
-                  </p>
-                  <a
-                    href={pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download PDF
-                  </a>
+              {/* Fallback for browsers that don't support iframe */}
+              <noscript>
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
+                  <div className="text-center">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-4">
+                      PDF preview requires JavaScript
+                    </p>
+                    <a
+                      href={pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Open PDF
+                    </a>
+                  </div>
                 </div>
-              </div>
-            </noscript>
+              </noscript>
+            </div>
           </div>
 
           {/* Collapse Button */}
@@ -117,6 +227,13 @@ export default function PostPDFViewer({ pdfAttachment }) {
           💡 Click "View PDF" to read inline, "Full Screen" for better reading
           experience, or "Download" to save locally
         </p>
+        {(pdfAttachment.storageType === "metadata_only" ||
+          (!pdfAttachment.content && !pdfAttachment.contentDocId)) && (
+          <p className="text-xs text-amber-600 mt-1">
+            ⚠️ This is a large file. For best experience, use "Download" or
+            "Full Screen" options.
+          </p>
+        )}
       </div>
     </div>
   );

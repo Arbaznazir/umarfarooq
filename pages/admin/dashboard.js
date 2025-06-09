@@ -125,7 +125,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      // Prepare PDF attachment data - remove base64 content if too large for Firestore
+      // Prepare PDF attachment data
       let pdfData = null;
       if (postPdf) {
         pdfData = {
@@ -137,17 +137,52 @@ export default function AdminDashboard() {
           environment: postPdf.environment || "unknown",
         };
 
-        // Only include content for small files or when necessary
-        if (postPdf.content && postPdf.content.length < 1000000) {
-          // 1MB limit for Firestore
-          pdfData.content = postPdf.content;
+        // Handle large files by storing content separately
+        if (postPdf.content) {
+          const contentSize = postPdf.content.length;
+          const firestoreLimit = 800000; // Conservative 800KB limit for main document
+
+          if (contentSize < firestoreLimit) {
+            // Small file - store content in main document
+            pdfData.content = postPdf.content;
+            pdfData.storageType = "inline";
+            console.log("PDF content stored inline (small file)");
+          } else {
+            // Large file - store content in separate document
+            try {
+              const pdfContentRef = await addDoc(
+                collection(db, "pdf_contents"),
+                {
+                  filename: postPdf.filename,
+                  content: postPdf.content,
+                  createdAt: serverTimestamp(),
+                  size: postPdf.size,
+                }
+              );
+
+              pdfData.contentDocId = pdfContentRef.id;
+              pdfData.storageType = "separate";
+              console.log(
+                "PDF content stored in separate document:",
+                pdfContentRef.id
+              );
+            } catch (contentError) {
+              console.error(
+                "Failed to store PDF content separately:",
+                contentError
+              );
+              // Fallback: store without content
+              pdfData.storageType = "metadata_only";
+              pdfData.warning = "Content too large for storage";
+            }
+          }
         }
 
         console.log("PDF data being saved:", {
           ...pdfData,
           content: pdfData.content
             ? `${pdfData.content.length} characters`
-            : "not included",
+            : "stored separately or not included",
         });
       }
 
@@ -164,7 +199,9 @@ export default function AdminDashboard() {
 
       console.log("Saving post data:", {
         ...postData,
-        pdfAttachment: pdfData ? "PDF attached" : "No PDF",
+        pdfAttachment: pdfData
+          ? `PDF attached (${pdfData.storageType})`
+          : "No PDF",
       });
 
       if (editingPost) {

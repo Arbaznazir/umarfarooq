@@ -86,9 +86,9 @@ export default async function handler(req, res) {
         base64Length: base64Content.length,
       });
 
-      // Check if base64 content is too large for Firestore (1MB limit)
-      const contentSize = base64Content.length;
-      const firestoreLimit = 1000000; // 1MB in characters
+      // For production, we'll store ALL PDFs as base64 in the response
+      // The frontend will handle storage in Firestore appropriately
+      // This is a temporary solution until we implement Firebase Storage
 
       // Clean up temp file
       try {
@@ -98,33 +98,18 @@ export default async function handler(req, res) {
         console.log("Temp file cleanup error (non-critical):", error.message);
       }
 
-      // Return file data - include content only if small enough
-      const responseData = {
+      // Return file data with content for frontend to handle
+      res.status(200).json({
         success: true,
         filename: newFilename,
         originalName: originalName,
         url: `/api/serve-pdf/${newFilename}`,
         size: file.size,
+        content: base64Content, // Frontend will decide how to store this
         isBase64: true,
         environment: "vercel",
-        contentIncluded: contentSize < firestoreLimit,
-      };
-
-      // Only include content if it's small enough for Firestore
-      if (contentSize < firestoreLimit) {
-        responseData.content = base64Content;
-        console.log(
-          "Content included in response (size within Firestore limits)"
-        );
-      } else {
-        console.log(
-          `Content too large for Firestore (${contentSize} > ${firestoreLimit}), storing metadata only`
-        );
-        responseData.warning =
-          "File too large for inline storage. Download functionality may be limited.";
-      }
-
-      res.status(200).json(responseData);
+        note: "File processed for serverless environment",
+      });
     } else {
       console.log("Processing for local development");
 

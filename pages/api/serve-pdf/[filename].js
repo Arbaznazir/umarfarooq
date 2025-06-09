@@ -1,6 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 
 export default async function handler(req, res) {
@@ -72,14 +79,49 @@ export default async function handler(req, res) {
       isBase64: pdfAttachment?.isBase64,
       size: pdfAttachment?.size,
       originalName: pdfAttachment?.originalName,
+      storageType: pdfAttachment?.storageType,
     });
 
     if (pdfAttachment) {
-      // Try to serve from base64 content if available
-      if (pdfAttachment.content && pdfAttachment.isBase64) {
-        console.log("Serving from database base64 content");
+      let pdfContent = null;
 
-        const fileBuffer = Buffer.from(pdfAttachment.content, "base64");
+      // Handle different storage types
+      if (pdfAttachment.storageType === "inline" && pdfAttachment.content) {
+        // Content stored inline
+        console.log("Serving from inline content");
+        pdfContent = pdfAttachment.content;
+      } else if (
+        pdfAttachment.storageType === "separate" &&
+        pdfAttachment.contentDocId
+      ) {
+        // Content stored in separate document
+        console.log(
+          "Retrieving content from separate document:",
+          pdfAttachment.contentDocId
+        );
+        try {
+          const contentDoc = await getDoc(
+            doc(db, "pdf_contents", pdfAttachment.contentDocId)
+          );
+          if (contentDoc.exists()) {
+            pdfContent = contentDoc.data().content;
+            console.log("Content retrieved from separate document");
+          } else {
+            console.log("Separate content document not found");
+          }
+        } catch (error) {
+          console.error("Error retrieving separate content:", error);
+        }
+      } else if (pdfAttachment.content && pdfAttachment.isBase64) {
+        // Legacy: content stored inline (backward compatibility)
+        console.log("Serving from legacy inline content");
+        pdfContent = pdfAttachment.content;
+      }
+
+      if (pdfContent && pdfAttachment.isBase64) {
+        console.log("Serving from base64 content");
+
+        const fileBuffer = Buffer.from(pdfContent, "base64");
 
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "inline");
@@ -89,21 +131,19 @@ export default async function handler(req, res) {
 
         return res.send(fileBuffer);
       } else {
-        // If no content stored (large file), return a placeholder or redirect
-        console.log(
-          "PDF attachment found but content not stored (likely large file)"
-        );
+        // No content available
+        console.log("PDF content not available");
         return res.status(404).json({
           error: "PDF content not available",
-          message:
-            "Large PDF files are not stored in database. Please re-upload the file.",
+          message: "PDF metadata found but content is not accessible.",
           filename: filename,
           originalName: pdfAttachment.originalName || "Unknown",
+          storageType: pdfAttachment.storageType || "unknown",
         });
       }
     }
 
-    console.log("PDF content not available");
+    console.log("PDF attachment not found");
     return res.status(404).json({ error: "PDF content not found" });
   } catch (error) {
     console.error("Error serving PDF:", error);
