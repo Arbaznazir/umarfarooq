@@ -7,6 +7,7 @@ import {
   X,
   AlertTriangle,
   ExternalLink,
+  Bug,
 } from "lucide-react";
 
 export default function PostPDFViewer({ pdfAttachment }) {
@@ -74,6 +75,45 @@ export default function PostPDFViewer({ pdfAttachment }) {
     }
   };
 
+  const handleDebug = async () => {
+    try {
+      console.log("🔍 Debug: PDF Attachment Data:", pdfAttachment);
+
+      const debugUrl = `/api/debug-pdf/${pdfAttachment.filename}`;
+      console.log("🔍 Debug: Fetching from:", debugUrl);
+
+      const response = await fetch(debugUrl);
+      const debugData = await response.json();
+
+      console.log("🔍 Debug: Server Response:", debugData);
+
+      // Show debug info in alert for quick viewing
+      const debugText = JSON.stringify(debugData, null, 2);
+
+      // Create a modal-like alert
+      const confirmed = window.confirm(
+        `Debug Info for ${pdfAttachment.originalName}:\n\n` +
+          `Found: ${debugData.found}\n` +
+          `Has Content: ${debugData.pdfAttachment?.hasContent}\n` +
+          `Content Length: ${debugData.pdfAttachment?.contentLength}\n` +
+          `Storage Type: ${
+            debugData.pdfAttachment?.storageType || "not set"
+          }\n` +
+          `Is Base64: ${debugData.pdfAttachment?.isBase64}\n\n` +
+          `Full debug data logged to console. Click OK to copy debug data to clipboard.`
+      );
+
+      if (confirmed) {
+        navigator.clipboard.writeText(debugText).catch(() => {
+          console.log("Could not copy to clipboard, debug data in console");
+        });
+      }
+    } catch (error) {
+      console.error("Debug error:", error);
+      alert(`Debug failed: ${error.message}`);
+    }
+  };
+
   return (
     <div className="my-8 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
       {/* PDF Header */}
@@ -135,6 +175,17 @@ export default function PostPDFViewer({ pdfAttachment }) {
               <Maximize2 className="h-4 w-4 mr-2" />
               Full Screen
             </a>
+
+            {/* Debug button - only show in development */}
+            {process.env.NODE_ENV === "development" && (
+              <button
+                onClick={handleDebug}
+                className="flex items-center px-2 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors duration-200 text-xs font-medium"
+                title="Debug PDF Data"
+              >
+                <Bug className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -165,6 +216,15 @@ export default function PostPDFViewer({ pdfAttachment }) {
                   <ExternalLink className="h-3 w-3 mr-1" />
                   Open in New Tab
                 </a>
+                {process.env.NODE_ENV === "development" && (
+                  <button
+                    onClick={handleDebug}
+                    className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded hover:bg-yellow-200 transition-colors inline-flex items-center"
+                  >
+                    <Bug className="h-3 w-3 mr-1" />
+                    Debug
+                  </button>
+                )}
               </div>
             </div>
           </div>
