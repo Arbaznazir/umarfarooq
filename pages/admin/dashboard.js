@@ -13,6 +13,7 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
+  where,
 } from "firebase/firestore";
 import { auth, db } from "../../lib/firebase";
 import {
@@ -47,6 +48,9 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("posts");
   const [posts, setPosts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [pdfs, setPdfs] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [pdfSearchTerm, setPdfSearchTerm] = useState("");
   const [showPostForm, setShowPostForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
@@ -74,6 +78,7 @@ export default function AdminDashboard() {
     if (user) {
       fetchPosts();
       fetchCategories();
+      fetchPDFs();
     }
   }, [user]);
 
@@ -104,6 +109,30 @@ export default function AdminDashboard() {
       setCategories(categoriesData);
     } catch (error) {
       // Error fetching categories
+    }
+  };
+
+  const fetchPDFs = async () => {
+    try {
+      const postsQuery = query(
+        collection(db, "posts"),
+        where("pdfAttachment", "!=", null)
+      );
+      const snapshot = await getDocs(postsQuery);
+      const pdfData = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          postTitle: data.title,
+          postCategory: data.category,
+          postLanguage: data.language,
+          createdAt: data.createdAt,
+          pdfAttachment: data.pdfAttachment,
+        };
+      });
+      setPdfs(pdfData);
+    } catch (error) {
+      console.error("Error fetching PDFs:", error);
     }
   };
 
@@ -218,6 +247,7 @@ export default function AdminDashboard() {
 
       resetPostForm();
       fetchPosts();
+      fetchPDFs(); // Refresh PDFs when a post is saved
     } catch (error) {
       console.error("Error saving post:", error);
       toast.error(`Error saving post: ${error.message}`);
@@ -256,6 +286,7 @@ export default function AdminDashboard() {
         await deleteDoc(doc(db, "posts", postId));
         toast.success("Post deleted successfully!");
         fetchPosts();
+        fetchPDFs(); // Refresh PDFs when a post is deleted
       } catch (error) {
         // Error deleting post
         toast.error("Error deleting post");
@@ -496,6 +527,22 @@ export default function AdminDashboard() {
                 </div>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("pdfs")}
+              className={`flex items-center px-6 py-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
+                activeTab === "pdfs"
+                  ? "bg-gradient-to-r from-islamic-green to-emerald-600 text-white shadow-lg transform scale-105"
+                  : "text-gray-600 hover:text-islamic-green hover:bg-gray-50"
+              }`}
+            >
+              <FileText className="h-5 w-5 mr-2" />
+              PDF Library
+              {activeTab === "pdfs" && (
+                <div className="ml-2 bg-white/20 rounded-full px-2 py-1 text-xs">
+                  {pdfs.length}
+                </div>
+              )}
+            </button>
           </div>
         </div>
 
@@ -521,6 +568,22 @@ export default function AdminDashboard() {
                   <span className="font-semibold">Create New Post</span>
                   <Sparkles className="h-4 w-4 ml-2" />
                 </button>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="px-8 py-4 bg-gray-50 border-b border-gray-200">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <BarChart3 className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search posts by title, content, or category..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-islamic-green focus:border-islamic-green text-sm"
+                />
               </div>
             </div>
 
@@ -567,61 +630,105 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {posts.map((post) => (
-                        <tr
-                          key={post.id}
-                          className="hover:bg-gray-50 transition-colors duration-200"
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center">
-                              {post.featured && (
-                                <Star className="h-4 w-4 text-amber-500 mr-2" />
-                              )}
-                              {post.pdfAttachment && (
-                                <FileText
-                                  className="h-4 w-4 text-red-600 mr-2"
-                                  title="Has PDF attachment"
-                                />
-                              )}
-                              <div className="text-sm font-medium text-gray-900 line-clamp-2">
-                                {post.title}
+                      {posts
+                        .filter(
+                          (post) =>
+                            post.title
+                              .toLowerCase()
+                              .includes(searchTerm.toLowerCase()) ||
+                            post.content
+                              .toLowerCase()
+                              .includes(searchTerm.toLowerCase()) ||
+                            post.category
+                              .toLowerCase()
+                              .includes(searchTerm.toLowerCase())
+                        )
+                        .map((post) => (
+                          <tr
+                            key={post.id}
+                            className="hover:bg-gray-50 transition-colors duration-200"
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                {post.featured && (
+                                  <Star className="h-4 w-4 text-amber-500 mr-2" />
+                                )}
+                                {post.pdfAttachment && (
+                                  <FileText
+                                    className="h-4 w-4 text-red-600 mr-2"
+                                    title="Has PDF attachment"
+                                  />
+                                )}
+                                <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                  {post.title}
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-islamic-green text-white">
-                              {post.category}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500 capitalize">
-                            {post.language || "english"}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-500">
-                            {post.createdAt?.toDate?.()?.toLocaleDateString() ||
-                              "Recent"}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-3">
-                              <button
-                                onClick={() => handleEditPost(post)}
-                                className="text-islamic-green hover:text-emerald-600 transition-colors duration-200"
-                              >
-                                <Edit className="h-5 w-5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeletePost(post.id)}
-                                className="text-red-600 hover:text-red-800 transition-colors duration-200"
-                              >
-                                <Trash2 className="h-5 w-5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-islamic-green text-white">
+                                {post.category}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500 capitalize">
+                              {post.language || "english"}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {post.createdAt
+                                ?.toDate?.()
+                                ?.toLocaleDateString() || "Recent"}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center space-x-3">
+                                <button
+                                  onClick={() => handleEditPost(post)}
+                                  className="text-islamic-green hover:text-emerald-600 transition-colors duration-200"
+                                >
+                                  <Edit className="h-5 w-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeletePost(post.id)}
+                                  className="text-red-600 hover:text-red-800 transition-colors duration-200"
+                                >
+                                  <Trash2 className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
               )}
+
+              {posts.length > 0 &&
+                posts.filter(
+                  (post) =>
+                    post.title
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase()) ||
+                    post.content
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase()) ||
+                    post.category
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase())
+                ).length === 0 && (
+                  <div className="text-center py-12">
+                    <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      No Posts Match Your Search
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      Try adjusting your search terms or browse all posts.
+                    </p>
+                    <button
+                      onClick={() => setSearchTerm("")}
+                      className="inline-flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-300"
+                    >
+                      Clear Search
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}
@@ -701,6 +808,270 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* PDFs Tab */}
+        {activeTab === "pdfs" && (
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            {/* PDFs Header */}
+            <div className="bg-gradient-to-r from-gray-50 to-white px-8 py-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-black text-gray-900 mb-2">
+                    PDF Library Management
+                  </h2>
+                  <p className="text-gray-600">
+                    View and manage all PDF attachments across your posts
+                  </p>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="text-center bg-red-50 px-4 py-2 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">
+                      {pdfs.length}
+                    </div>
+                    <div className="text-xs font-semibold text-red-500 uppercase tracking-wide">
+                      Total PDFs
+                    </div>
+                  </div>
+                  <div className="text-center bg-purple-50 px-4 py-2 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {(
+                        pdfs.reduce(
+                          (total, pdf) =>
+                            total + (pdf.pdfAttachment?.size || 0),
+                          0
+                        ) /
+                        (1024 * 1024)
+                      ).toFixed(1)}
+                      MB
+                    </div>
+                    <div className="text-xs font-semibold text-purple-500 uppercase tracking-wide">
+                      Total Size
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="px-8 py-4 bg-gray-50 border-b border-gray-200">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <BarChart3 className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search PDFs by filename, post title, or category..."
+                  value={pdfSearchTerm}
+                  onChange={(e) => setPdfSearchTerm(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* PDFs List */}
+            <div className="p-8">
+              {pdfs.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    No PDFs Yet
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Upload PDFs by creating posts with PDF attachments to build
+                    your Islamic library.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setActiveTab("posts");
+                      setShowPostForm(true);
+                    }}
+                    className="flex items-center mx-auto px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors duration-300"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    Create Post with PDF
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          PDF Document
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Associated Post
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Category & Language
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          File Details
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {pdfs
+                        .filter(
+                          (pdf) =>
+                            pdf.postTitle
+                              .toLowerCase()
+                              .includes(pdfSearchTerm.toLowerCase()) ||
+                            pdf.pdfAttachment.originalName
+                              .toLowerCase()
+                              .includes(pdfSearchTerm.toLowerCase()) ||
+                            pdf.postCategory
+                              .toLowerCase()
+                              .includes(pdfSearchTerm.toLowerCase())
+                        )
+                        .map((pdf) => (
+                          <tr
+                            key={pdf.id}
+                            className="hover:bg-gray-50 transition-colors duration-200"
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <div className="bg-red-100 rounded-lg p-3 mr-4">
+                                  <FileText className="h-6 w-6 text-red-600" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {pdf.pdfAttachment?.originalName ||
+                                      "Unknown PDF"}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {pdf.pdfAttachment?.filename}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {pdf.postTitle}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                ID: {pdf.id.substring(0, 8)}...
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col space-y-1">
+                                <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                  {pdf.postCategory}
+                                </span>
+                                <span className="text-xs text-gray-500 capitalize">
+                                  {pdf.postLanguage || "english"}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">
+                                {pdf.pdfAttachment?.size
+                                  ? `${(
+                                      pdf.pdfAttachment.size /
+                                      (1024 * 1024)
+                                    ).toFixed(2)} MB`
+                                  : "Size unknown"}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {pdf.createdAt
+                                  ?.toDate?.()
+                                  ?.toLocaleDateString() || "Recently uploaded"}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => {
+                                    window.open(`/post/${pdf.id}`, "_blank");
+                                  }}
+                                  className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors duration-200"
+                                >
+                                  <Eye className="h-3 w-3 mr-1" />
+                                  View Post
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    window.open(
+                                      `/pdf/${pdf.pdfAttachment?.filename}`,
+                                      "_blank"
+                                    );
+                                  }}
+                                  className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors duration-200"
+                                >
+                                  <FileText className="h-3 w-3 mr-1" />
+                                  View PDF
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleEditPost(
+                                      posts.find((p) => p.id === pdf.id)
+                                    )
+                                  }
+                                  className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors duration-200"
+                                >
+                                  <Edit className="h-3 w-3 mr-1" />
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const link = document.createElement("a");
+                                    link.href = `/api/serve-pdf/${pdf.pdfAttachment?.filename}`;
+                                    link.download =
+                                      pdf.pdfAttachment?.originalName ||
+                                      "download.pdf";
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                  }}
+                                  className="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 transition-colors duration-200"
+                                >
+                                  <Save className="h-3 w-3 mr-1" />
+                                  Download
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {pdfs.length > 0 &&
+                pdfs.filter(
+                  (pdf) =>
+                    pdf.postTitle
+                      .toLowerCase()
+                      .includes(pdfSearchTerm.toLowerCase()) ||
+                    pdf.pdfAttachment.originalName
+                      .toLowerCase()
+                      .includes(pdfSearchTerm.toLowerCase()) ||
+                    pdf.postCategory
+                      .toLowerCase()
+                      .includes(pdfSearchTerm.toLowerCase())
+                ).length === 0 && (
+                  <div className="text-center py-12">
+                    <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      No PDFs Match Your Search
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      Try adjusting your search terms or browse all PDFs.
+                    </p>
+                    <button
+                      onClick={() => setPdfSearchTerm("")}
+                      className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-300"
+                    >
+                      Clear Search
+                    </button>
+                  </div>
+                )}
             </div>
           </div>
         )}

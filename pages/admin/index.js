@@ -7,6 +7,29 @@ import { auth } from "../../lib/firebase";
 import { Lock, User } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import FaviconHead from "../../components/FaviconHead";
+import Link from "next/link";
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
+  EyeIcon,
+  UserIcon,
+  DocumentTextIcon,
+  HomeIcon,
+  MagnifyingGlassIcon,
+  FileIcon,
+} from "@heroicons/react/24/outline";
+import {
+  collection,
+  getDocs,
+  deleteDoc,
+  doc,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { db } from "../../lib/firebase";
 
 export default function AdminLogin() {
   const [email, setEmail] = useState("");

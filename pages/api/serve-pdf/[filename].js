@@ -75,7 +75,8 @@ export default async function handler(req, res) {
     }
 
     const postDoc = snapshot.docs[0];
-    const pdfAttachment = postDoc.data().pdfAttachment;
+    const postData = postDoc.data();
+    const pdfAttachment = postData.pdfAttachment;
 
     console.log("📄 PDF attachment found:", {
       hasContent: !!pdfAttachment?.content,
@@ -86,113 +87,136 @@ export default async function handler(req, res) {
       storageType: pdfAttachment?.storageType,
       hasContentDocId: !!pdfAttachment?.contentDocId,
       postId: postDoc.id,
+      postTitle: postData.title,
     });
 
-    if (pdfAttachment) {
-      let pdfContent = null;
+    if (!pdfAttachment) {
+      console.log("❌ No pdfAttachment found in post");
+      return res.status(404).json({
+        error: "PDF attachment not found",
+        details: "Post found but no PDF attachment data",
+      });
+    }
 
-      // Handle different storage types with enhanced debugging
-      if (pdfAttachment.storageType === "inline" && pdfAttachment.content) {
-        // Content stored inline
-        console.log("📝 Serving from inline content");
-        pdfContent = pdfAttachment.content;
-      } else if (
-        pdfAttachment.storageType === "separate" &&
+    let pdfContent = null;
+    let contentSource = "none";
+
+    // Try multiple methods to get PDF content
+
+    // Method 1: Direct content (most common)
+    if (pdfAttachment.content && typeof pdfAttachment.content === "string") {
+      console.log("📝 Found direct content");
+      pdfContent = pdfAttachment.content;
+      contentSource = "direct";
+    }
+
+    // Method 2: Separate document storage
+    else if (pdfAttachment.contentDocId) {
+      console.log(
+        "🔗 Attempting to retrieve from separate document:",
         pdfAttachment.contentDocId
-      ) {
-        // Content stored in separate document
-        console.log(
-          "🔗 Retrieving content from separate document:",
-          pdfAttachment.contentDocId
+      );
+      try {
+        const contentDoc = await getDoc(
+          doc(db, "pdf_contents", pdfAttachment.contentDocId)
         );
-        try {
-          const contentDoc = await getDoc(
-            doc(db, "pdf_contents", pdfAttachment.contentDocId)
-          );
-          if (contentDoc.exists()) {
-            pdfContent = contentDoc.data().content;
-            console.log("✅ Content retrieved from separate document");
-          } else {
-            console.log("❌ Separate content document not found");
-          }
-        } catch (error) {
-          console.error("❌ Error retrieving separate content:", error);
+        if (contentDoc.exists()) {
+          const data = contentDoc.data();
+          pdfContent = data.content;
+          contentSource = "separate";
+          console.log("✅ Content retrieved from separate document");
+        } else {
+          console.log("❌ Separate content document not found");
         }
-      } else if (pdfAttachment.content) {
-        // Legacy or any content available - enhanced backward compatibility
-        console.log("🔄 Serving from available content (legacy/fallback)");
-        pdfContent = pdfAttachment.content;
-      } else {
-        console.log("❌ No content found in any storage method");
-      }
-
-      // Try to serve the content if available
-      if (pdfContent) {
-        console.log(
-          "📤 Attempting to serve PDF content, length:",
-          pdfContent.length
-        );
-
-        try {
-          // Check if it's base64 or try to serve as is
-          let fileBuffer;
-
-          if (pdfAttachment.isBase64 !== false) {
-            // Default to base64 if not specified
-            console.log("🔄 Decoding base64 content");
-            fileBuffer = Buffer.from(pdfContent, "base64");
-          } else {
-            console.log("📄 Using content as binary");
-            fileBuffer = Buffer.from(pdfContent);
-          }
-
-          // Validate buffer
-          if (fileBuffer.length === 0) {
-            throw new Error("Empty buffer after decoding");
-          }
-
-          console.log(
-            "✅ Successfully prepared buffer, size:",
-            fileBuffer.length
-          );
-
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", "inline");
-          res.setHeader("Cache-Control", "public, max-age=31536000");
-          res.setHeader("X-Content-Type-Options", "nosniff");
-          res.setHeader("Content-Length", fileBuffer.length.toString());
-
-          return res.send(fileBuffer);
-        } catch (bufferError) {
-          console.error("❌ Error processing PDF buffer:", bufferError);
-          return res.status(500).json({
-            error: "Error processing PDF content",
-            details: bufferError.message,
-          });
-        }
-      } else {
-        // No content available
-        console.log("❌ PDF content not available");
-        return res.status(404).json({
-          error: "PDF content not available",
-          message: "PDF metadata found but content is not accessible.",
-          filename: filename,
-          originalName: pdfAttachment.originalName || "Unknown",
-          storageType: pdfAttachment.storageType || "unknown",
-          debug: {
-            hasContent: !!pdfAttachment.content,
-            hasContentDocId: !!pdfAttachment.contentDocId,
-            isBase64: pdfAttachment.isBase64,
-          },
-        });
+      } catch (error) {
+        console.error("❌ Error retrieving separate content:", error);
       }
     }
 
-    console.log("❌ PDF attachment not found in post document");
-    return res.status(404).json({
-      error: "PDF attachment not found",
-      details: "Post found but no PDF attachment data",
+    console.log("📊 Content retrieval result:", {
+      contentSource,
+      hasContent: !!pdfContent,
+      contentLength: pdfContent ? pdfContent.length : 0,
     });
+
+    // Try to serve the content if available
+    if (pdfContent && typeof pdfContent === "string" && pdfContent.length > 0) {
+      console.log("📤 Attempting to serve PDF content");
+
+      try {
+        let fileBuffer;
+
+        // Always try base64 decoding first (most PDFs are stored this way)
+        try {
+          fileBuffer = Buffer.from(pdfContent, "base64");
+          console.log(
+            "✅ Successfully decoded as base64, buffer size:",
+            fileBuffer.length
+          );
+
+          // Validate it's a proper PDF by checking the header
+          if (fileBuffer.length > 4) {
+            const header = fileBuffer.toString("ascii", 0, 4);
+            if (header === "%PDF") {
+              console.log("✅ Valid PDF header detected");
+            } else {
+              console.log("⚠️ No PDF header found, but proceeding anyway");
+            }
+          }
+        } catch (base64Error) {
+          console.log(
+            "❌ Base64 decoding failed, trying as binary:",
+            base64Error.message
+          );
+          fileBuffer = Buffer.from(pdfContent, "binary");
+        }
+
+        // Final validation
+        if (fileBuffer.length === 0) {
+          throw new Error("Empty buffer after all decoding attempts");
+        }
+
+        console.log("✅ Successfully prepared buffer for serving");
+
+        // Set proper headers
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Length", fileBuffer.length.toString());
+        res.setHeader("Accept-Ranges", "bytes");
+
+        return res.send(fileBuffer);
+      } catch (bufferError) {
+        console.error("❌ Error processing PDF buffer:", bufferError);
+        return res.status(500).json({
+          error: "Error processing PDF content",
+          details: bufferError.message,
+          contentSource,
+          contentLength: pdfContent ? pdfContent.length : 0,
+        });
+      }
+    } else {
+      // No content available
+      console.log("❌ No valid PDF content found");
+      return res.status(404).json({
+        error: "PDF content not available",
+        message: "PDF metadata found but content is not accessible.",
+        filename: filename,
+        originalName: pdfAttachment.originalName || "Unknown",
+        storageType: pdfAttachment.storageType || "unknown",
+        contentSource,
+        debug: {
+          hasContent: !!pdfAttachment.content,
+          hasContentDocId: !!pdfAttachment.contentDocId,
+          isBase64: pdfAttachment.isBase64,
+          contentType: typeof pdfAttachment.content,
+          contentLength: pdfAttachment.content
+            ? pdfAttachment.content.length
+            : 0,
+        },
+      });
+    }
   } catch (error) {
     console.error("💥 Error serving PDF:", error);
     res.status(500).json({
