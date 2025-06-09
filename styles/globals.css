@@ -6,6 +6,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* React PDF Styles */
+@import './react-pdf.css';
+
 /* Al Majeed Quranic Font */
 @font-face {
   font-family: 'Al Majeed Quranic';

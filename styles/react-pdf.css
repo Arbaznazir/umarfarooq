@@ -1,0 +1,62 @@
+/* React PDF Styling */
+.react-pdf__Page {
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  background: white;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.react-pdf__Page canvas {
+  max-width: 100%;
+  height: auto !important;
+  display: block;
+}
+
+.react-pdf__Document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.react-pdf__Page__textContent {
+  display: none !important;
+}
+
+.react-pdf__Page__annotations {
+  display: none !important;
+}
+
+/* Loading states */
+.react-pdf__Page--loading {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Error states */
+.react-pdf__Page--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .react-pdf__Page {
+    margin: 0;
+    max-width: 100%;
+  }
+  
+  .react-pdf__Page canvas {
+    max-width: 100%;
+    height: auto !important;
+  }
+} 

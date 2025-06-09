@@ -10,6 +10,7 @@ import {
   Bug,
   Info,
 } from "lucide-react";
+import ReactPDFViewer from "./ReactPDFViewer";
 
 export default function PostPDFViewer({ pdfAttachment }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -64,7 +65,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
   // Use actual file size if available, otherwise fall back to stored size
   const displaySize = actualFileSize || pdfAttachment.size || 0;
 
-  const handleViewPDF = () => {
+  const handleViewPDF = async () => {
     if (isMetadataOnly) {
       // For metadata_only PDFs, redirect to full screen viewer
       window.open(
@@ -76,8 +77,23 @@ export default function PostPDFViewer({ pdfAttachment }) {
 
     setIsLoading(true);
     setHasError(false);
-    setIsExpanded(!isExpanded);
-    setIsLoading(false);
+
+    // Test if PDF is accessible before showing viewer
+    try {
+      const response = await fetch(pdfUrl, { method: "HEAD" });
+      if (response.ok) {
+        setIsExpanded(!isExpanded);
+      } else {
+        setHasError(true);
+        setErrorMessage("PDF is not accessible for viewing");
+      }
+    } catch (error) {
+      console.error("PDF accessibility check failed:", error);
+      setHasError(true);
+      setErrorMessage("Failed to check PDF accessibility");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDownload = async () => {
@@ -352,44 +368,15 @@ export default function PostPDFViewer({ pdfAttachment }) {
         </div>
       )}
 
-      {/* PDF Viewer */}
+      {/* React PDF Viewer */}
       {isExpanded && !hasError && !isMetadataOnly && (
         <div className="relative">
-          <div className="bg-gray-100 p-4">
-            {/* Enhanced PDF viewer with multiple fallbacks */}
-            <div className="relative w-full h-96 rounded-lg shadow-inner bg-white">
-              <iframe
-                src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                className="w-full h-full rounded-lg"
-                title={`PDF Viewer - ${pdfAttachment.originalName}`}
-                onError={() => {
-                  setHasError(true);
-                  setErrorMessage("PDF viewer failed to load");
-                }}
-              />
-
-              {/* Fallback for browsers that don't support iframe */}
-              <noscript>
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
-                  <div className="text-center">
-                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600 mb-4">
-                      PDF preview requires JavaScript
-                    </p>
-                    <a
-                      href={pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Open PDF
-                    </a>
-                  </div>
-                </div>
-              </noscript>
-            </div>
-          </div>
+          <ReactPDFViewer
+            pdfUrl={pdfUrl}
+            filename={pdfAttachment.originalName}
+            onDownload={handleDownload}
+            className="border-0"
+          />
 
           {/* Collapse Button */}
           <button
@@ -405,8 +392,8 @@ export default function PostPDFViewer({ pdfAttachment }) {
       {/* PDF Info Footer */}
       <div className="bg-gray-50 px-6 py-3 text-center">
         <p className="text-xs text-gray-500">
-          💡 Click "View PDF" to read inline, "Full Screen" for better reading
-          experience, or "Download" to save locally
+          💡 Click "View PDF" to read inline with advanced controls, "Full
+          Screen" for dedicated viewer, or "Download" to save locally
         </p>
         {isMetadataOnly && (
           <p className="text-xs text-amber-600 mt-1">
