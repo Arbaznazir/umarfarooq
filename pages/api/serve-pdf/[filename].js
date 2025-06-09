@@ -19,9 +19,15 @@ export default async function handler(req, res) {
 
   // Decode the filename in case it has spaces or special characters
   const decodedFilename = decodeURIComponent(filename);
+
+  // Also create a sanitized version (spaces replaced with underscores)
+  // This matches the sanitization logic in upload-pdf.js
+  const sanitizedFilename = decodedFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
+
   console.log("🔍 Serving PDF:", {
     original: filename,
     decoded: decodedFilename,
+    sanitized: sanitizedFilename,
   });
 
   try {
@@ -36,35 +42,43 @@ export default async function handler(req, res) {
 
     // First try to serve from file system (local development)
     if (!isVercel) {
-      const filePath = path.join(
-        process.cwd(),
-        "public",
-        "uploads",
-        "pdfs",
-        decodedFilename
-      );
+      // Try both the original and sanitized filenames
+      const filePaths = [
+        path.join(process.cwd(), "public", "uploads", "pdfs", decodedFilename),
+        path.join(
+          process.cwd(),
+          "public",
+          "uploads",
+          "pdfs",
+          sanitizedFilename
+        ),
+      ];
 
-      console.log("📁 Checking local file:", filePath);
+      for (const filePath of filePaths) {
+        console.log("📁 Checking local file:", filePath);
 
-      if (fs.existsSync(filePath)) {
-        console.log("✅ Serving from local file system");
-        const fileBuffer = fs.readFileSync(filePath);
+        if (fs.existsSync(filePath)) {
+          console.log("✅ Serving from local file system");
+          const fileBuffer = fs.readFileSync(filePath);
 
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", "inline");
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-        res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", "inline");
+          res.setHeader("Cache-Control", "public, max-age=31536000");
+          res.setHeader("X-Content-Type-Options", "nosniff");
 
-        return res.send(fileBuffer);
-      } else {
-        console.log("❌ Local file not found, checking database");
+          return res.send(fileBuffer);
+        }
       }
+
+      console.log(
+        "❌ Local file not found with any filename variant, checking database"
+      );
     }
 
     // For Vercel or if file not found locally, try to get from database
-    console.log("🔍 Querying database for PDF:", decodedFilename);
+    console.log("🔍 Querying database for PDF with multiple filename variants");
 
-    // Try both encoded and decoded filename in database queries
+    // Try multiple filename variants in database queries
     const queries = [
       query(
         collection(db, "posts"),
@@ -73,6 +87,10 @@ export default async function handler(req, res) {
       query(
         collection(db, "posts"),
         where("pdfAttachment.filename", "==", filename)
+      ),
+      query(
+        collection(db, "posts"),
+        where("pdfAttachment.filename", "==", sanitizedFilename)
       ),
     ];
 
@@ -89,7 +107,7 @@ export default async function handler(req, res) {
     }
 
     if (!snapshot || snapshot.empty) {
-      console.log("❌ PDF not found in database with either filename variant");
+      console.log("❌ PDF not found in database with any filename variant");
 
       // Let's also try a broader search to see if there are any PDFs with similar names
       const allPDFsQuery = query(
@@ -104,7 +122,7 @@ export default async function handler(req, res) {
       return res.status(404).json({
         error: "PDF file not found",
         details: `No post found with PDF filename: ${decodedFilename}`,
-        searchedFilenames: [decodedFilename, filename],
+        searchedFilenames: [decodedFilename, filename, sanitizedFilename],
         availableFilenames: availableFilenames.slice(0, 10), // Show up to 10 available filenames
       });
     }
