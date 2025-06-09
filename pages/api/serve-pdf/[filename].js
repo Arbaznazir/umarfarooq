@@ -133,6 +133,26 @@ export default async function handler(req, res) {
       });
     }
 
+    // Check if this is a metadata_only PDF (large file that couldn't be stored)
+    if (pdfAttachment.storageType === "metadata_only") {
+      console.log("⚠️ PDF is metadata_only - content not stored due to size");
+      return res.status(404).json({
+        error: "PDF content not available",
+        message:
+          "This PDF file is too large to be stored in the database. Please try downloading it instead.",
+        filename: decodedFilename,
+        originalName: pdfAttachment.originalName || "Unknown",
+        storageType: "metadata_only",
+        size: pdfAttachment.size,
+        isLargeFile: true,
+        recommendations: [
+          "Use the Download button to get the file",
+          "Use the Full Screen option to view in a new tab",
+          "Contact the administrator if the file is not accessible",
+        ],
+      });
+    }
+
     let pdfContent = null;
     let contentSource = "none";
 
@@ -242,6 +262,19 @@ export default async function handler(req, res) {
         originalName: pdfAttachment.originalName || "Unknown",
         storageType: pdfAttachment.storageType || "unknown",
         contentSource,
+        isLargeFile: pdfAttachment.storageType === "metadata_only",
+        recommendations:
+          pdfAttachment.storageType === "metadata_only"
+            ? [
+                "This file was too large to store in the database",
+                "Please use the Download button",
+                "Or try the Full Screen option",
+              ]
+            : [
+                "Try refreshing the page",
+                "Use the Download button as an alternative",
+                "Contact support if the issue persists",
+              ],
         debug: {
           hasContent: !!pdfAttachment.content,
           hasContentDocId: !!pdfAttachment.contentDocId,

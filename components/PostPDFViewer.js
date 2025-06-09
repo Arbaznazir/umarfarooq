@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Bug,
+  Info,
 } from "lucide-react";
 
 export default function PostPDFViewer({ pdfAttachment }) {
@@ -15,6 +16,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorData, setErrorData] = useState(null);
 
   if (!pdfAttachment) return null;
 
@@ -26,24 +28,45 @@ export default function PostPDFViewer({ pdfAttachment }) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
-  const pdfUrl = `/api/serve-pdf/${pdfAttachment.filename}`;
+  const pdfUrl = `/api/serve-pdf/${encodeURIComponent(pdfAttachment.filename)}`;
+
+  // Check if this is a metadata_only PDF (too large to be stored)
+  const isMetadataOnly =
+    pdfAttachment.storageType === "metadata_only" ||
+    (!pdfAttachment.content && !pdfAttachment.contentDocId);
 
   const handleViewPDF = async () => {
     if (!isExpanded) {
       setIsLoading(true);
       setHasError(false);
+      setErrorData(null);
 
       try {
         // Test if the PDF is accessible
         const response = await fetch(pdfUrl, { method: "HEAD" });
         if (!response.ok) {
-          throw new Error(`PDF not accessible (${response.status})`);
+          const errorResponse = await fetch(pdfUrl);
+          const errorData = await errorResponse.json();
+          throw new Error(
+            errorData.message || `PDF not accessible (${response.status})`
+          );
         }
         setIsExpanded(true);
       } catch (error) {
         console.error("PDF access error:", error);
         setHasError(true);
         setErrorMessage(error.message || "Failed to load PDF");
+
+        // Try to get more detailed error info
+        try {
+          const errorResponse = await fetch(pdfUrl);
+          if (!errorResponse.ok) {
+            const errorData = await errorResponse.json();
+            setErrorData(errorData);
+          }
+        } catch (detailedError) {
+          console.error("Failed to get detailed error:", detailedError);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -54,6 +77,16 @@ export default function PostPDFViewer({ pdfAttachment }) {
 
   const handleDownload = async () => {
     try {
+      // For metadata_only PDFs, we need to handle download differently
+      if (isMetadataOnly) {
+        // Fallback to opening in new tab since we can't download content that doesn't exist
+        window.open(
+          `/pdf/${encodeURIComponent(pdfAttachment.filename)}`,
+          "_blank"
+        );
+        return;
+      }
+
       const response = await fetch(pdfUrl);
       if (!response.ok) {
         throw new Error("Download failed");
@@ -79,7 +112,9 @@ export default function PostPDFViewer({ pdfAttachment }) {
     try {
       console.log("🔍 Debug: PDF Attachment Data:", pdfAttachment);
 
-      const debugUrl = `/api/debug-pdf/${pdfAttachment.filename}`;
+      const debugUrl = `/api/debug-pdf/${encodeURIComponent(
+        pdfAttachment.filename
+      )}`;
       console.log("🔍 Debug: Fetching from:", debugUrl);
 
       const response = await fetch(debugUrl);
@@ -93,13 +128,13 @@ export default function PostPDFViewer({ pdfAttachment }) {
       // Create a modal-like alert
       const confirmed = window.confirm(
         `Debug Info for ${pdfAttachment.originalName}:\n\n` +
-          `Found: ${debugData.found}\n` +
           `Has Content: ${debugData.pdfAttachment?.hasContent}\n` +
           `Content Length: ${debugData.pdfAttachment?.contentLength}\n` +
           `Storage Type: ${
             debugData.pdfAttachment?.storageType || "not set"
           }\n` +
-          `Is Base64: ${debugData.pdfAttachment?.isBase64}\n\n` +
+          `Is Base64: ${debugData.pdfAttachment?.isBase64}\n` +
+          `PDF Header Valid: ${debugData.pdfHeader?.isValidPDF}\n\n` +
           `Full debug data logged to console. Click OK to copy debug data to clipboard.`
       );
 
@@ -130,33 +165,37 @@ export default function PostPDFViewer({ pdfAttachment }) {
               <p className="text-sm text-gray-600">
                 PDF Document • {formatFileSize(pdfAttachment.size)}
               </p>
-              {(pdfAttachment.storageType === "metadata_only" ||
-                (!pdfAttachment.content && !pdfAttachment.contentDocId)) && (
-                <p className="text-xs text-amber-600 font-medium">
-                  ⚠️ Large file - download for viewing
-                </p>
+              {isMetadataOnly && (
+                <div className="flex items-center mt-1">
+                  <Info className="h-3 w-3 text-amber-600 mr-1" />
+                  <p className="text-xs text-amber-600 font-medium">
+                    Large file - download for viewing
+                  </p>
+                </div>
               )}
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              onClick={handleViewPDF}
-              disabled={isLoading}
-              className="flex items-center px-3 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  {isExpanded ? "Hide" : "View"} PDF
-                </>
-              )}
-            </button>
+            {!isMetadataOnly && (
+              <button
+                onClick={handleViewPDF}
+                disabled={isLoading}
+                className="flex items-center px-3 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors duration-200 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full"></div>
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    {isExpanded ? "Hide" : "View"} PDF
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               onClick={handleDownload}
@@ -167,7 +206,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
             </button>
 
             <a
-              href={`/pdf/${pdfAttachment.filename}`}
+              href={`/pdf/${encodeURIComponent(pdfAttachment.filename)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors duration-200 text-sm font-medium"
@@ -190,6 +229,40 @@ export default function PostPDFViewer({ pdfAttachment }) {
         </div>
       </div>
 
+      {/* Metadata Only Warning */}
+      {isMetadataOnly && (
+        <div className="bg-amber-50 border-l-4 border-amber-400 p-4">
+          <div className="flex items-center">
+            <Info className="h-5 w-5 text-amber-400 mr-3" />
+            <div>
+              <h4 className="text-amber-800 font-medium">Large File Notice</h4>
+              <p className="text-amber-700 text-sm mt-1">
+                This PDF file is too large to be viewed inline. Please use the
+                download or full-screen options.
+              </p>
+              <div className="mt-3 flex space-x-3">
+                <button
+                  onClick={handleDownload}
+                  className="text-sm bg-amber-100 text-amber-800 px-3 py-1 rounded hover:bg-amber-200 transition-colors flex items-center"
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Download PDF
+                </button>
+                <a
+                  href={`/pdf/${encodeURIComponent(pdfAttachment.filename)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 transition-colors inline-flex items-center"
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  Open in New Tab
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error Message */}
       {hasError && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4">
@@ -200,6 +273,16 @@ export default function PostPDFViewer({ pdfAttachment }) {
               <p className="text-red-700 text-sm mt-1">
                 {errorMessage}. Please try downloading the file instead.
               </p>
+
+              {/* Show recommendations if available */}
+              {errorData?.recommendations && (
+                <ul className="text-red-700 text-xs mt-2 list-disc list-inside">
+                  {errorData.recommendations.map((rec, index) => (
+                    <li key={index}>{rec}</li>
+                  ))}
+                </ul>
+              )}
+
               <div className="mt-3 flex space-x-3">
                 <button
                   onClick={handleDownload}
@@ -208,7 +291,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
                   Download PDF
                 </button>
                 <a
-                  href={`/pdf/${pdfAttachment.filename}`}
+                  href={`/pdf/${encodeURIComponent(pdfAttachment.filename)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 transition-colors inline-flex items-center"
@@ -232,7 +315,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
       )}
 
       {/* PDF Viewer */}
-      {isExpanded && !hasError && (
+      {isExpanded && !hasError && !isMetadataOnly && (
         <div className="relative">
           <div className="bg-gray-100 p-4">
             {/* Enhanced PDF viewer with multiple fallbacks */}
@@ -287,8 +370,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
           💡 Click "View PDF" to read inline, "Full Screen" for better reading
           experience, or "Download" to save locally
         </p>
-        {(pdfAttachment.storageType === "metadata_only" ||
-          (!pdfAttachment.content && !pdfAttachment.contentDocId)) && (
+        {isMetadataOnly && (
           <p className="text-xs text-amber-600 mt-1">
             ⚠️ This is a large file. For best experience, use "Download" or
             "Full Screen" options.
