@@ -17,6 +17,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorData, setErrorData] = useState(null);
+  const [actualFileSize, setActualFileSize] = useState(null);
 
   if (!pdfAttachment) return null;
 
@@ -28,6 +29,31 @@ export default function PostPDFViewer({ pdfAttachment }) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  // Get actual file size by making a HEAD request to the serve-pdf endpoint
+  useEffect(() => {
+    const getActualFileSize = async () => {
+      try {
+        const pdfUrl = `/api/serve-pdf/${encodeURIComponent(
+          pdfAttachment.filename
+        )}`;
+        const response = await fetch(pdfUrl, { method: "HEAD" });
+
+        if (response.ok) {
+          const contentLength = response.headers.get("content-length");
+          if (contentLength) {
+            setActualFileSize(parseInt(contentLength));
+          }
+        }
+      } catch (error) {
+        console.log("Could not get actual file size:", error);
+      }
+    };
+
+    if (pdfAttachment.filename) {
+      getActualFileSize();
+    }
+  }, [pdfAttachment.filename]);
+
   const pdfUrl = `/api/serve-pdf/${encodeURIComponent(pdfAttachment.filename)}`;
 
   // Check if this is a metadata_only PDF (too large to be stored)
@@ -35,51 +61,45 @@ export default function PostPDFViewer({ pdfAttachment }) {
     pdfAttachment.storageType === "metadata_only" ||
     (!pdfAttachment.content && !pdfAttachment.contentDocId);
 
-  const handleViewPDF = async () => {
-    if (!isExpanded) {
-      setIsLoading(true);
-      setHasError(false);
-      setErrorData(null);
+  // Use actual file size if available, otherwise fall back to stored size
+  const displaySize = actualFileSize || pdfAttachment.size || 0;
 
-      try {
-        // Test if the PDF is accessible
-        const response = await fetch(pdfUrl, { method: "HEAD" });
-        if (!response.ok) {
-          const errorResponse = await fetch(pdfUrl);
-          const errorData = await errorResponse.json();
-          throw new Error(
-            errorData.message || `PDF not accessible (${response.status})`
-          );
-        }
-        setIsExpanded(true);
-      } catch (error) {
-        console.error("PDF access error:", error);
-        setHasError(true);
-        setErrorMessage(error.message || "Failed to load PDF");
-
-        // Try to get more detailed error info
-        try {
-          const errorResponse = await fetch(pdfUrl);
-          if (!errorResponse.ok) {
-            const errorData = await errorResponse.json();
-            setErrorData(errorData);
-          }
-        } catch (detailedError) {
-          console.error("Failed to get detailed error:", detailedError);
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    } else {
-      setIsExpanded(false);
+  const handleViewPDF = () => {
+    if (isMetadataOnly) {
+      // For metadata_only PDFs, redirect to full screen viewer
+      window.open(
+        `/pdf/${encodeURIComponent(pdfAttachment.filename)}`,
+        "_blank"
+      );
+      return;
     }
+
+    setIsLoading(true);
+    setHasError(false);
+    setIsExpanded(!isExpanded);
+    setIsLoading(false);
   };
 
   const handleDownload = async () => {
     try {
       // For metadata_only PDFs, we need to handle download differently
       if (isMetadataOnly) {
-        // Fallback to opening in new tab since we can't download content that doesn't exist
+        // Try direct download first
+        const response = await fetch(pdfUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = pdfAttachment.originalName;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          return;
+        }
+
+        // Fallback to opening in new tab
         window.open(
           `/pdf/${encodeURIComponent(pdfAttachment.filename)}`,
           "_blank"
@@ -134,7 +154,11 @@ export default function PostPDFViewer({ pdfAttachment }) {
             debugData.pdfAttachment?.storageType || "not set"
           }\n` +
           `Is Base64: ${debugData.pdfAttachment?.isBase64}\n` +
-          `PDF Header Valid: ${debugData.pdfHeader?.isValidPDF}\n\n` +
+          `PDF Header Valid: ${debugData.pdfHeader?.isValidPDF}\n` +
+          `Actual File Size: ${
+            actualFileSize ? formatFileSize(actualFileSize) : "Unknown"
+          }\n` +
+          `Database Size: ${formatFileSize(pdfAttachment.size)}\n\n` +
           `Full debug data logged to console. Click OK to copy debug data to clipboard.`
       );
 
@@ -163,7 +187,12 @@ export default function PostPDFViewer({ pdfAttachment }) {
                 📄 {pdfAttachment.originalName}
               </h3>
               <p className="text-sm text-gray-600">
-                PDF Document • {formatFileSize(pdfAttachment.size)}
+                PDF Document • {formatFileSize(displaySize)}
+                {actualFileSize && actualFileSize !== pdfAttachment.size && (
+                  <span className="text-xs text-green-600 ml-1">
+                    (actual size)
+                  </span>
+                )}
               </p>
               {isMetadataOnly && (
                 <div className="flex items-center mt-1">
@@ -374,6 +403,11 @@ export default function PostPDFViewer({ pdfAttachment }) {
           <p className="text-xs text-amber-600 mt-1">
             ⚠️ This is a large file. For best experience, use "Download" or
             "Full Screen" options.
+          </p>
+        )}
+        {actualFileSize && actualFileSize !== pdfAttachment.size && (
+          <p className="text-xs text-green-600 mt-1">
+            ✅ Actual file size: {formatFileSize(actualFileSize)}
           </p>
         )}
       </div>

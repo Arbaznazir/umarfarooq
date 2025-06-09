@@ -977,6 +977,12 @@ export default function AdminDashboard() {
                                       (1024 * 1024)
                                     ).toFixed(2)} MB`
                                   : "Size unknown"}
+                                {pdf.pdfAttachment?.storageType ===
+                                  "metadata_only" && (
+                                  <span className="text-xs text-amber-600 block">
+                                    (Large file)
+                                  </span>
+                                )}
                               </div>
                               <div className="text-sm text-gray-500">
                                 {pdf.createdAt

@@ -21,7 +21,6 @@ export default async function handler(req, res) {
   const decodedFilename = decodeURIComponent(filename);
 
   // Also create a sanitized version (spaces replaced with underscores)
-  // This matches the sanitization logic in upload-pdf.js
   const sanitizedFilename = decodedFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
 
   console.log("🔍 Serving PDF:", {
@@ -59,65 +58,28 @@ export default async function handler(req, res) {
 
         if (fs.existsSync(filePath)) {
           console.log("✅ Serving from local file system");
+
+          // Get file stats for proper size information
+          const stats = fs.statSync(filePath);
           const fileBuffer = fs.readFileSync(filePath);
 
           res.setHeader("Content-Type", "application/pdf");
           res.setHeader("Content-Disposition", "inline");
+          res.setHeader("Content-Length", stats.size.toString());
           res.setHeader("Cache-Control", "public, max-age=31536000");
           res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Accept-Ranges", "bytes");
+          res.setHeader("X-Served-From", "local-file");
 
           return res.send(fileBuffer);
         }
       }
 
-      // Special fallback for Ikrimah PDF - look for any Ikrimah file
-      if (
-        decodedFilename.includes("Ikrimah") ||
-        sanitizedFilename.includes("Ikrimah")
-      ) {
-        console.log("🔍 Looking for any Ikrimah PDF file as fallback...");
-
-        const uploadsDir = path.join(
-          process.cwd(),
-          "public",
-          "uploads",
-          "pdfs"
-        );
-
-        try {
-          const files = fs.readdirSync(uploadsDir);
-          const ikrimahFiles = files.filter(
-            (file) => file.includes("Ikrimah") && file.endsWith(".pdf")
-          );
-
-          if (ikrimahFiles.length > 0) {
-            const fallbackFile = ikrimahFiles[0];
-            const fallbackPath = path.join(uploadsDir, fallbackFile);
-
-            console.log(`✅ Found fallback Ikrimah file: ${fallbackFile}`);
-
-            const fileBuffer = fs.readFileSync(fallbackPath);
-
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", "inline");
-            res.setHeader("Cache-Control", "public, max-age=31536000");
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            res.setHeader("X-Fallback-File", fallbackFile);
-
-            return res.send(fileBuffer);
-          }
-        } catch (fallbackError) {
-          console.log("❌ Fallback search failed:", fallbackError.message);
-        }
-      }
-
-      console.log(
-        "❌ Local file not found with any filename variant, checking database"
-      );
+      console.log("❌ Local file not found, checking database");
     }
 
     // For Vercel or if file not found locally, try to get from database
-    console.log("🔍 Querying database for PDF with multiple filename variants");
+    console.log("🔍 Querying database for PDF");
 
     // Try multiple filename variants in database queries
     const queries = [
@@ -148,23 +110,11 @@ export default async function handler(req, res) {
     }
 
     if (!snapshot || snapshot.empty) {
-      console.log("❌ PDF not found in database with any filename variant");
-
-      // Let's also try a broader search to see if there are any PDFs with similar names
-      const allPDFsQuery = query(
-        collection(db, "posts"),
-        where("pdfAttachment", "!=", null)
-      );
-      const allPDFs = await getDocs(allPDFsQuery);
-      const availableFilenames = allPDFs.docs
-        .map((doc) => doc.data().pdfAttachment?.filename)
-        .filter(Boolean);
-
+      console.log("❌ PDF not found in database");
       return res.status(404).json({
         error: "PDF file not found",
         details: `No post found with PDF filename: ${decodedFilename}`,
         searchedFilenames: [decodedFilename, filename, sanitizedFilename],
-        availableFilenames: availableFilenames.slice(0, 10), // Show up to 10 available filenames
       });
     }
 
@@ -175,13 +125,9 @@ export default async function handler(req, res) {
     console.log("📄 PDF attachment found:", {
       hasContent: !!pdfAttachment?.content,
       contentLength: pdfAttachment?.content ? pdfAttachment.content.length : 0,
-      isBase64: pdfAttachment?.isBase64,
       size: pdfAttachment?.size,
       originalName: pdfAttachment?.originalName,
       storageType: pdfAttachment?.storageType,
-      hasContentDocId: !!pdfAttachment?.contentDocId,
-      postId: postDoc.id,
-      postTitle: postData.title,
     });
 
     if (!pdfAttachment) {
@@ -194,18 +140,10 @@ export default async function handler(req, res) {
 
     // Check if this is a metadata_only PDF (large file that couldn't be stored)
     if (pdfAttachment.storageType === "metadata_only") {
-      console.log("⚠️ PDF is metadata_only - content not stored due to size");
+      console.log("⚠️ PDF is metadata_only - trying local fallback");
 
-      // Special handling for metadata_only PDFs - try to find and serve from local files
-      if (
-        !isVercel &&
-        (decodedFilename.includes("Ikrimah") ||
-          sanitizedFilename.includes("Ikrimah"))
-      ) {
-        console.log(
-          "🔍 Attempting to serve metadata_only Ikrimah PDF from local files..."
-        );
-
+      // Try to serve from local files as fallback
+      if (!isVercel) {
         const uploadsDir = path.join(
           process.cwd(),
           "public",
@@ -215,25 +153,58 @@ export default async function handler(req, res) {
 
         try {
           const files = fs.readdirSync(uploadsDir);
-          const ikrimahFiles = files.filter(
-            (file) => file.includes("Ikrimah") && file.endsWith(".pdf")
+
+          // Try exact filename match first
+          const exactMatch = files.find(
+            (file) => file === decodedFilename || file === sanitizedFilename
           );
 
-          if (ikrimahFiles.length > 0) {
-            const fallbackFile = ikrimahFiles[0];
-            const fallbackPath = path.join(uploadsDir, fallbackFile);
-
+          if (exactMatch) {
+            const fallbackPath = path.join(uploadsDir, exactMatch);
             console.log(
-              `✅ Serving metadata_only PDF from local file: ${fallbackFile}`
+              `✅ Serving metadata_only PDF from local file: ${exactMatch}`
             );
 
+            const stats = fs.statSync(fallbackPath);
             const fileBuffer = fs.readFileSync(fallbackPath);
 
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", "inline");
+            res.setHeader("Content-Length", stats.size.toString());
             res.setHeader("Cache-Control", "public, max-age=31536000");
             res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Accept-Ranges", "bytes");
             res.setHeader("X-Served-From", "local-fallback");
+            res.setHeader("X-Original-Storage", "metadata_only");
+
+            return res.send(fileBuffer);
+          }
+
+          // Fallback: try partial name matching (for Ikrimah files)
+          const partialMatch = files.find(
+            (file) =>
+              file.includes("Ikrimah") &&
+              file.endsWith(".pdf") &&
+              (decodedFilename.includes("Ikrimah") ||
+                sanitizedFilename.includes("Ikrimah"))
+          );
+
+          if (partialMatch) {
+            const fallbackPath = path.join(uploadsDir, partialMatch);
+            console.log(
+              `✅ Serving metadata_only PDF from partial match: ${partialMatch}`
+            );
+
+            const stats = fs.statSync(fallbackPath);
+            const fileBuffer = fs.readFileSync(fallbackPath);
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", "inline");
+            res.setHeader("Content-Length", stats.size.toString());
+            res.setHeader("Cache-Control", "public, max-age=31536000");
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Accept-Ranges", "bytes");
+            res.setHeader("X-Served-From", "local-partial-match");
             res.setHeader("X-Original-Storage", "metadata_only");
 
             return res.send(fileBuffer);
@@ -260,10 +231,9 @@ export default async function handler(req, res) {
       });
     }
 
+    // Try to get PDF content from database
     let pdfContent = null;
     let contentSource = "none";
-
-    // Try multiple methods to get PDF content
 
     // Method 1: Direct content (most common)
     if (pdfAttachment.content && typeof pdfAttachment.content === "string") {
@@ -271,7 +241,6 @@ export default async function handler(req, res) {
       pdfContent = pdfAttachment.content;
       contentSource = "direct";
     }
-
     // Method 2: Separate document storage
     else if (pdfAttachment.contentDocId) {
       console.log(
@@ -341,13 +310,14 @@ export default async function handler(req, res) {
 
         console.log("✅ Successfully prepared buffer for serving");
 
-        // Set proper headers
+        // Set proper headers with correct size
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", "inline");
+        res.setHeader("Content-Length", fileBuffer.length.toString());
         res.setHeader("Cache-Control", "public, max-age=31536000");
         res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("Content-Length", fileBuffer.length.toString());
         res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("X-Served-From", "database");
 
         return res.send(fileBuffer);
       } catch (bufferError) {

@@ -23,6 +23,7 @@ export default function PDFViewer() {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pdfInfo, setPdfInfo] = useState(null);
+  const [actualFileSize, setActualFileSize] = useState(null);
 
   useEffect(() => {
     if (filename) {
@@ -40,7 +41,13 @@ export default function PDFViewer() {
         method: "HEAD",
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        // Get actual file size from Content-Length header
+        const contentLength = response.headers.get("content-length");
+        if (contentLength) {
+          setActualFileSize(parseInt(contentLength));
+        }
+      } else {
         // Get detailed error information
         const errorResponse = await fetch(`/api/serve-pdf/${encodedFilename}`);
         const errorData = await errorResponse.json();
@@ -147,9 +154,14 @@ export default function PDFViewer() {
           <h1 className="text-lg font-semibold truncate max-w-md">
             {decodeURIComponent(filename.replace(/^\d+_/, ""))}
           </h1>
-          {pdfInfo?.pdfAttachment?.size && (
+          {(pdfInfo?.pdfAttachment?.size || actualFileSize) && (
             <span className="text-sm text-gray-300">
-              ({(pdfInfo.pdfAttachment.size / (1024 * 1024)).toFixed(2)} MB)
+              (
+              {(
+                (actualFileSize || pdfInfo.pdfAttachment.size) /
+                (1024 * 1024)
+              ).toFixed(2)}{" "}
+              MB)
             </span>
           )}
         </div>
