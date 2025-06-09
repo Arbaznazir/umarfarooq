@@ -37,6 +37,7 @@
   "dependencies": {
     "firebase": "^10.7.1",
     "formidable": "^3.5.4",
+    "googleapis": "^150.0.1",
     "lucide-react": "^0.294.0",
     "next": "14.0.4",
     "react": "^18",

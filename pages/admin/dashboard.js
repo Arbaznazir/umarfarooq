@@ -162,26 +162,37 @@ export default function AdminDashboard() {
           originalName: postPdf.originalName,
           url: postPdf.url,
           size: postPdf.size,
-          isBase64: postPdf.isBase64 || false,
+          storageType: postPdf.storageType || "unknown",
           environment: postPdf.environment || "unknown",
         };
 
-        // Improved PDF storage handling for both local and production
-        if (postPdf.content) {
-          const contentSize = postPdf.content.length;
-          const firestoreLimit = 700000; // Conservative 700KB limit for main document
+        // Handle different storage types
+        if (postPdf.storageType === "google_drive") {
+          // Google Drive - store file IDs and URLs
+          console.log("📂 Storing Google Drive PDF metadata");
+          pdfData.driveFileId = postPdf.driveFileId;
+          pdfData.drivePublicUrl = postPdf.drivePublicUrl;
+          pdfData.driveViewUrl = postPdf.driveViewUrl;
+          pdfData.driveEmbedUrl = postPdf.driveEmbedUrl;
+          pdfData.storageType = "google_drive";
+        } else if (
+          postPdf.content &&
+          postPdf.storageType === "base64_fallback"
+        ) {
+          // Fallback base64 storage - try to store in Firestore
+          console.log("📄 Handling base64 fallback storage");
 
-          console.log(
-            `PDF content size: ${contentSize} bytes, limit: ${firestoreLimit}`
-          );
+          const contentSize = postPdf.content.length;
+          const firestoreLimit = 700000; // Conservative 700KB limit
 
           if (contentSize < firestoreLimit) {
-            // Small file - store content in main document
+            // Small file - store content inline
             pdfData.content = postPdf.content;
+            pdfData.isBase64 = true;
             pdfData.storageType = "inline";
-            console.log("PDF content stored inline (small file)");
+            console.log("PDF content stored inline (fallback)");
           } else {
-            // Large file - store content in separate document
+            // Large file - store in separate document
             try {
               const pdfContentRef = await addDoc(
                 collection(db, "pdf_contents"),
@@ -197,55 +208,20 @@ export default function AdminDashboard() {
               pdfData.contentDocId = pdfContentRef.id;
               pdfData.storageType = "separate";
               console.log(
-                "PDF content stored in separate document:",
+                "PDF content stored in separate document (fallback):",
                 pdfContentRef.id
               );
-            } catch (contentError) {
-              console.error(
-                "Failed to store PDF content separately:",
-                contentError
-              );
-
-              // For production, we must ensure content is available
-              // Try to store a compressed version or split into chunks
-              if (postPdf.environment === "production") {
-                console.warn(
-                  "Production environment: attempting to store content despite size"
-                );
-                try {
-                  // Force storage of content even if large (for production availability)
-                  pdfData.content = postPdf.content;
-                  pdfData.storageType = "inline_forced";
-                  pdfData.warning =
-                    "Large content stored inline for production availability";
-                  console.log("Forced inline storage for production");
-                } catch (forceError) {
-                  console.error("Failed to force inline storage:", forceError);
-                  pdfData.storageType = "metadata_only";
-                  pdfData.warning =
-                    "Content too large for storage - file not available in production";
-                }
-              } else {
-                // Local development: fallback to metadata_only (can use local files)
-                pdfData.storageType = "metadata_only";
-                pdfData.warning =
-                  "Content too large for storage - using local file fallback";
-              }
+            } catch (error) {
+              console.error("Failed to store fallback content:", error);
+              pdfData.storageType = "metadata_only";
+              pdfData.warning = "Content too large for Firestore storage";
             }
           }
         } else {
-          // No content provided (shouldn't happen with new upload system)
-          console.warn("No PDF content provided in upload response");
-          pdfData.storageType = "metadata_only";
-          pdfData.warning = "No content available";
+          // Unknown or legacy format
+          console.warn("Unknown PDF storage format:", postPdf);
+          pdfData.storageType = "unknown";
         }
-
-        console.log("PDF data being saved:", {
-          ...pdfData,
-          content: pdfData.content
-            ? `${pdfData.content.length} characters`
-            : "stored separately or not included",
-        });
       }
 
       const postData = {
