@@ -13,8 +13,8 @@ import {
   Loader2,
 } from "lucide-react";
 
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.js`;
+// Set up PDF.js worker - use a reliable CDN
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 export default function ReactPDFViewer({
   pdfUrl,
@@ -77,31 +77,50 @@ export default function ReactPDFViewer({
   if (error) {
     return (
       <div
-        className={`bg-red-50 border border-red-200 rounded-lg p-6 ${className}`}
+        className={`bg-white border border-gray-200 rounded-lg overflow-hidden ${className}`}
       >
-        <div className="flex items-center text-red-600 mb-3">
-          <FileText className="h-5 w-5 mr-2" />
-          <h3 className="font-medium">PDF Loading Error</h3>
+        {/* PDF viewer header */}
+        <div className="bg-blue-50 border-b border-blue-200 p-4">
+          <div className="flex items-center text-blue-600 mb-2">
+            <FileText className="h-5 w-5 mr-2" />
+            <h3 className="font-medium">PDF Document Viewer</h3>
+          </div>
+          <p className="text-blue-700 text-sm">
+            Reading PDF document with full controls and navigation.
+          </p>
         </div>
-        <p className="text-red-700 text-sm mb-4">
-          Failed to load PDF: {error.message || "Unknown error"}
-        </p>
-        <div className="flex space-x-3">
-          <button
-            onClick={() => window.location.reload()}
-            className="px-3 py-2 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200 transition-colors"
-          >
-            Retry
-          </button>
-          {onDownload && (
-            <button
-              onClick={onDownload}
-              className="px-3 py-2 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200 transition-colors flex items-center"
+
+        {/* Fallback iframe viewer */}
+        <div className="relative" style={{ height: "600px" }}>
+          <iframe
+            src={pdfUrl}
+            className="w-full h-full border-0"
+            title={filename || "PDF Document"}
+          />
+        </div>
+
+        {/* Fallback controls */}
+        <div className="bg-gray-50 border-t border-gray-200 p-4">
+          <div className="flex justify-center space-x-3">
+            {onDownload && (
+              <button
+                onClick={onDownload}
+                className="px-4 py-2 bg-islamic-green text-white rounded hover:bg-emerald-600 transition-colors flex items-center"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </button>
+            )}
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center"
             >
-              <Download className="h-3 w-3 mr-1" />
-              Download
-            </button>
-          )}
+              <Maximize2 className="h-4 w-4 mr-2" />
+              Open in New Tab
+            </a>
+          </div>
         </div>
       </div>
     );

@@ -1,28 +1,54 @@
-import fs from "fs";
-import path from "path";
 import {
-  collection,
-  query,
-  where,
-  getDocs,
+  getFirestore,
   doc,
   getDoc,
+  collection,
+  getDocs,
+  query,
+  where,
 } from "firebase/firestore";
-import { getGoogleDriveFileInfo } from "../../../lib/gdrive";
-import { db } from "../../../lib/firebase";
+import { app } from "../../../lib/firebase";
+import { promises as fs } from "fs";
+import path from "path";
+
+const db = getFirestore(app);
+
+// Environment check helper
+function debugEnvironment() {
+  console.log("🔍 Debug: Environment variables check:");
+  console.log("NODE_ENV:", process.env.NODE_ENV);
+  console.log(
+    "NEXT_PUBLIC_FIREBASE_API_KEY:",
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "✅ Loaded" : "❌ Missing"
+  );
+  console.log(
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:",
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ? "✅ Loaded" : "❌ Missing"
+  );
+  console.log(
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID:",
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ? "✅ Loaded" : "❌ Missing"
+  );
+
+  if (
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN &&
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  ) {
+    console.log("✅ All Firebase environment variables loaded successfully");
+  } else {
+    console.log("❌ Some Firebase environment variables are missing");
+  }
+}
 
 export default async function handler(req, res) {
+  debugEnvironment();
+
   const { filename } = req.query;
 
-  if (!filename) {
-    return res.status(400).json({ error: "Filename is required" });
-  }
-
-  // Decode the filename in case it has spaces or special characters
+  // Enhanced URL decoding for better filename handling
   const decodedFilename = decodeURIComponent(filename);
-
-  // Also create a sanitized version (spaces replaced with underscores)
-  const sanitizedFilename = decodedFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const sanitizedFilename = decodedFilename.replace(/[<>:"/\\|?*]/g, "_");
 
   console.log("🔍 Serving PDF:", {
     original: filename,
@@ -31,254 +57,170 @@ export default async function handler(req, res) {
   });
 
   try {
-    // Enhanced environment detection
     const isVercel =
       process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION;
 
     console.log("🌍 Environment check:", {
       isVercel: !!isVercel,
-      filename: decodedFilename,
+      filename: sanitizedFilename,
     });
 
-    // STEP 1: Check database for Google Drive file ID
-    console.log("🔍 Querying database for PDF with Google Drive info");
-
-    const postsQuery = query(
-      collection(db, "posts"),
-      where("pdfAttachment.filename", "==", decodedFilename)
-    );
-
-    const snapshot = await getDocs(postsQuery);
-
-    if (!snapshot.empty) {
-      const postDoc = snapshot.docs[0];
-      const postData = postDoc.data();
-      const pdfAttachment = postData.pdfAttachment;
-
-      console.log(
-        "✅ Found PDF with filename:",
-        pdfAttachment?.filename
-          ? { stringValue: pdfAttachment.filename }
-          : "No filename"
+    // Step 1: Check database for Google Drive files FIRST
+    console.log("🔍 Querying database for Google Drive PDF");
+    try {
+      const postsRef = collection(db, "posts");
+      const q = query(
+        postsRef,
+        where("pdfAttachment.filename", "==", sanitizedFilename)
       );
+      const querySnapshot = await getDocs(q);
 
-      if (pdfAttachment) {
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const pdfData = doc.data().pdfAttachment;
+
+        console.log(
+          "✅ Found PDF with filename:",
+          doc.data().pdfAttachment?.filename
+        );
         console.log("📄 PDF attachment found:", {
-          hasContent: !!pdfAttachment.content,
-          contentLength: pdfAttachment.content
-            ? pdfAttachment.content.length
-            : 0,
-          size: pdfAttachment.size,
-          originalName: pdfAttachment.originalName,
-          storageType: pdfAttachment.storageType,
-          hasDriveFileId: !!pdfAttachment.driveFileId,
-          hasDrivePublicUrl: !!pdfAttachment.drivePublicUrl,
+          hasContent: !!pdfData?.content,
+          contentLength: pdfData?.content?.length || 0,
+          size: pdfData?.size || 0,
+          originalName: pdfData?.originalName,
+          storageType: pdfData?.storageType,
+          hasGoogleDriveId: !!pdfData?.driveFileId,
+          hasGoogleDriveUrl: !!pdfData?.drivePublicUrl,
         });
 
-        // STEP 2: Try Google Drive URL first (if available)
-        if (pdfAttachment.driveFileId || pdfAttachment.drivePublicUrl) {
-          try {
-            if (pdfAttachment.drivePublicUrl) {
-              console.log(
-                "🔗 Redirecting to Google Drive URL:",
-                pdfAttachment.drivePublicUrl
-              );
-              return res.redirect(302, pdfAttachment.drivePublicUrl);
-            } else if (pdfAttachment.driveFileId) {
-              console.log(
-                "☁️ Getting Google Drive file info:",
-                pdfAttachment.driveFileId
-              );
-              const driveInfo = await getGoogleDriveFileInfo(
-                pdfAttachment.driveFileId
-              );
-              console.log(
-                "🔗 Redirecting to Google Drive:",
-                driveInfo.publicUrl
-              );
-              return res.redirect(302, driveInfo.publicUrl);
-            }
-          } catch (driveError) {
-            console.log(
-              "⚠️ Google Drive access failed, trying fallbacks...",
-              driveError.message
-            );
-          }
+        // Priority 1: Google Drive files
+        if (pdfData?.driveFileId) {
+          console.log(
+            "🚀 Redirecting to Google Drive proxy:",
+            pdfData.driveFileId
+          );
+
+          // Use our proxy endpoint for Google Drive files
+          const proxyUrl = `/api/serve-gdrive-pdf/${pdfData.driveFileId}`;
+          return res.redirect(302, proxyUrl);
         }
 
-        // STEP 3: Serve from database content (legacy fallback)
-        if (pdfAttachment.content) {
-          console.log("📄 Serving from database content");
-
-          let pdfBuffer;
-
-          if (
-            pdfAttachment.isBase64 ||
-            typeof pdfAttachment.content === "string"
-          ) {
-            pdfBuffer = Buffer.from(pdfAttachment.content, "base64");
-          } else {
-            pdfBuffer = Buffer.from(pdfAttachment.content);
-          }
-
-          const contentLength = pdfBuffer.length;
+        // Priority 2: Base64 content (legacy files)
+        if (pdfData?.content) {
+          console.log("📄 Serving base64 content from database");
+          const buffer = Buffer.from(pdfData.content, "base64");
 
           res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", "inline");
-          res.setHeader("Content-Length", contentLength.toString());
-          res.setHeader("Cache-Control", "public, max-age=31536000");
-          res.setHeader("X-Content-Type-Options", "nosniff");
-          res.setHeader("Accept-Ranges", "bytes");
-          res.setHeader("X-Served-From", "database-content");
+          res.setHeader("Content-Length", buffer.length);
           res.setHeader(
-            "X-Storage-Type",
-            pdfAttachment.storageType || "unknown"
+            "Content-Disposition",
+            `inline; filename="${pdfData.originalName || sanitizedFilename}"`
           );
+          res.setHeader("Cache-Control", "public, max-age=31536000");
 
-          return res.send(pdfBuffer);
+          return res.send(buffer);
         }
 
-        // STEP 4: Handle separate content document (legacy)
-        if (pdfAttachment.contentDocId) {
-          console.log(
-            "📄 Loading from separate content document:",
-            pdfAttachment.contentDocId
+        // Priority 3: Metadata-only files - try local fallback
+        if (pdfData?.storageType === "metadata_only") {
+          console.log("⚠️ PDF is metadata_only - trying local fallback");
+
+          // Try partial filename match for metadata_only files
+          const uploadsDir = path.join(
+            process.cwd(),
+            "public",
+            "uploads",
+            "pdfs"
           );
 
           try {
-            const contentDoc = await getDoc(
-              doc(db, "pdf_contents", pdfAttachment.contentDocId)
+            const files = await fs.readdir(uploadsDir);
+            const baseFilename = sanitizedFilename.replace(/^\d+_/, ""); // Remove timestamp prefix
+            const matchingFile = files.find(
+              (file) =>
+                file.includes(baseFilename.replace(".pdf", "")) ||
+                baseFilename.includes(
+                  file.replace(".pdf", "").replace(/^\d+_/, "")
+                )
             );
 
-            if (contentDoc.exists()) {
-              const contentData = contentDoc.data();
+            if (matchingFile) {
+              console.log(
+                "✅ Serving metadata_only PDF from partial match:",
+                matchingFile
+              );
+              const filePath = path.join(uploadsDir, matchingFile);
+              const fileBuffer = await fs.readFile(filePath);
 
-              if (contentData.content) {
-                const pdfBuffer = Buffer.from(contentData.content, "base64");
-                const contentLength = pdfBuffer.length;
+              res.setHeader("Content-Type", "application/pdf");
+              res.setHeader("Content-Length", fileBuffer.length);
+              res.setHeader(
+                "Content-Disposition",
+                `inline; filename="${pdfData.originalName || matchingFile}"`
+              );
+              res.setHeader("Cache-Control", "public, max-age=31536000");
 
-                res.setHeader("Content-Type", "application/pdf");
-                res.setHeader("Content-Disposition", "inline");
-                res.setHeader("Content-Length", contentLength.toString());
-                res.setHeader("Cache-Control", "public, max-age=31536000");
-                res.setHeader("X-Content-Type-Options", "nosniff");
-                res.setHeader("Accept-Ranges", "bytes");
-                res.setHeader("X-Served-From", "separate-document");
-
-                return res.send(pdfBuffer);
-              }
+              return res.send(fileBuffer);
             }
           } catch (error) {
-            console.error(
-              "❌ Failed to load separate content document:",
-              error
-            );
+            console.log("📁 Local fallback failed:", error.message);
           }
         }
       }
+    } catch (error) {
+      console.error("❌ Database query failed:", error);
     }
 
-    // STEP 5: Check local file system (for development)
+    // Step 2: Check for local files (development only)
     if (!isVercel) {
-      const uploadsDir = path.join(process.cwd(), "public", "uploads", "pdfs");
-
-      console.log(
-        "📁 Checking local file:",
-        path.join(uploadsDir, decodedFilename)
+      console.log("📁 Checking local file for development");
+      const localPath = path.join(
+        process.cwd(),
+        "public",
+        "uploads",
+        "pdfs",
+        sanitizedFilename
       );
 
       try {
-        if (fs.existsSync(uploadsDir)) {
-          const files = fs.readdirSync(uploadsDir);
+        await fs.access(localPath);
+        console.log("✅ Found local file:", localPath);
 
-          // Try exact filename match first
-          const exactMatch = files.find(
-            (file) => file === decodedFilename || file === sanitizedFilename
-          );
+        const fileBuffer = await fs.readFile(localPath);
+        const stats = await fs.stat(localPath);
 
-          if (exactMatch) {
-            const localPath = path.join(uploadsDir, exactMatch);
-            console.log(`✅ Found local file: ${exactMatch}`);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Length", stats.size);
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${sanitizedFilename}"`
+        );
+        res.setHeader("Cache-Control", "public, max-age=31536000");
 
-            const stats = fs.statSync(localPath);
-            const fileBuffer = fs.readFileSync(localPath);
-
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", "inline");
-            res.setHeader("Content-Length", stats.size.toString());
-            res.setHeader("Cache-Control", "public, max-age=31536000");
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            res.setHeader("Accept-Ranges", "bytes");
-            res.setHeader("X-Served-From", "local-file");
-
-            return res.send(fileBuffer);
-          }
-
-          // Fallback: try partial name matching (for Ikrimah files)
-          const partialMatch = files.find(
-            (file) =>
-              file.includes("Ikrimah") &&
-              file.endsWith(".pdf") &&
-              (decodedFilename.includes("Ikrimah") ||
-                sanitizedFilename.includes("Ikrimah"))
-          );
-
-          if (partialMatch) {
-            const fallbackPath = path.join(uploadsDir, partialMatch);
-            console.log(`✅ Serving from partial match: ${partialMatch}`);
-
-            const stats = fs.statSync(fallbackPath);
-            const fileBuffer = fs.readFileSync(fallbackPath);
-
-            res.setHeader("Content-Type", "application/pdf");
-            res.setHeader("Content-Disposition", "inline");
-            res.setHeader("Content-Length", stats.size.toString());
-            res.setHeader("Cache-Control", "public, max-age=31536000");
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            res.setHeader("Accept-Ranges", "bytes");
-            res.setHeader("X-Served-From", "local-partial-match");
-
-            return res.send(fileBuffer);
-          }
-        }
-      } catch (localError) {
-        console.log("📁 Local file check failed:", localError.message);
+        return res.send(fileBuffer);
+      } catch (error) {
+        console.log("📁 Local file not found:", error.message);
       }
     }
 
-    // STEP 6: Final error response
-    console.log("❌ All serving methods failed");
-
-    if (isVercel) {
-      return res.status(404).json({
-        error: "PDF not available",
-        message:
-          "This PDF file is not available for download in production. Please contact the administrator to upload this file to Google Drive.",
-        isProduction: true,
-        filename: decodedFilename,
-        suggestion:
-          "Contact the administrator to upload this file to Google Drive (FREE storage)",
-      });
-    } else {
-      return res.status(404).json({
-        error: "PDF not available",
-        message: "PDF content not found in any storage location",
-        isProduction: false,
-        filename: decodedFilename,
-        checkedLocations: [
-          "Google Drive",
-          "Database content",
-          "Separate documents",
-          "Local files",
-        ],
-      });
-    }
+    // Step 3: No file found anywhere
+    console.log("❌ PDF not found in any location");
+    res.status(404).json({
+      error: "PDF file not found",
+      filename: sanitizedFilename,
+      searchLocations: [
+        "Google Drive (via database)",
+        "Base64 content (database)",
+        "Metadata-only with local fallback",
+        !isVercel ? "Local files (development)" : null,
+      ].filter(Boolean),
+    });
   } catch (error) {
-    console.error("💥 Serve PDF error:", error);
-    return res.status(500).json({
+    console.error("💥 Error serving PDF:", error);
+    res.status(500).json({
       error: "Internal server error",
-      message: "Failed to serve PDF",
       details: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 }

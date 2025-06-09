@@ -1,6 +1,5 @@
 import { IncomingForm } from "formidable";
 import { promises as fs } from "fs";
-import path from "path";
 import { uploadToGoogleDrive } from "../../lib/gdrive";
 
 export const config = {
@@ -22,15 +21,26 @@ export default async function handler(req, res) {
 
     console.log("📂 Google Drive Upload - Environment check:", {
       isVercel: !!isVercel,
-      VERCEL: process.env.VERCEL,
-      VERCEL_ENV: process.env.VERCEL_ENV,
-      NOW_REGION: process.env.NOW_REGION,
       uploadDir,
     });
 
-    // Debug Google Drive configuration
+    // Verify Google Drive Service Account configuration
+    if (
+      !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+      !process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+    ) {
+      console.error("❌ Google Drive Service Account not configured");
+      return res.status(500).json({
+        error: "Google Drive not configured",
+        details:
+          "GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY environment variables are required",
+        note: "Please set up Service Account authentication for Google Drive",
+      });
+    }
+
     console.log("🔧 Google Drive Debug:", {
-      hasApiKey: !!process.env.GOOGLE_DRIVE_API_KEY,
+      hasServiceAccountEmail: !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      hasServiceAccountKey: !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
       hasFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
       folderId: process.env.GOOGLE_DRIVE_FOLDER_ID || "root",
     });
@@ -41,13 +51,13 @@ export default async function handler(req, res) {
       maxFileSize: 50 * 1024 * 1024, // 50MB limit
     });
 
-    // Ensure upload directory exists (only for local development)
+    // Ensure upload directory exists (only for temporary processing)
     if (!isVercel) {
       try {
         await fs.access(uploadDir);
       } catch {
         await fs.mkdir(uploadDir, { recursive: true });
-        console.log("📁 Created upload directory:", uploadDir);
+        console.log("📁 Created temporary directory:", uploadDir);
       }
     }
 
@@ -71,6 +81,12 @@ export default async function handler(req, res) {
     // Validate file type
     if (!file.mimetype?.includes("pdf")) {
       console.log("❌ Invalid file type:", file.mimetype);
+      // Clean up temporary file
+      try {
+        await fs.unlink(file.filepath);
+      } catch (error) {
+        console.log("⚠️ Temp file cleanup error:", error.message);
+      }
       return res.status(400).json({ error: "Only PDF files are allowed" });
     }
 
@@ -83,7 +99,7 @@ export default async function handler(req, res) {
     // Read file content
     const fileContent = await fs.readFile(file.filepath);
 
-    console.log("📤 Uploading to Google Drive:", {
+    console.log("📤 Uploading ONLY to Google Drive:", {
       filename: driveFilename,
       originalName,
       size: file.size,
@@ -91,7 +107,7 @@ export default async function handler(req, res) {
     });
 
     try {
-      // Upload file to Google Drive
+      // Upload file to Google Drive ONLY
       console.log("☁️ Uploading to Google Drive...");
       const driveResult = await uploadToGoogleDrive(
         fileContent,
@@ -99,12 +115,20 @@ export default async function handler(req, res) {
         originalName
       );
 
-      console.log("✅ Upload successful:", driveResult.fileId);
+      // Verify the upload was successful
+      if (!driveResult.success || !driveResult.fileId) {
+        throw new Error("Google Drive upload failed - no file ID received");
+      }
 
-      // Clean up temporary file
+      console.log("✅ Google Drive upload confirmed:", {
+        fileId: driveResult.fileId,
+        publicUrl: driveResult.publicUrl,
+      });
+
+      // Clean up temporary file immediately after successful upload
       try {
         await fs.unlink(file.filepath);
-        console.log("🗑️ Temp file cleaned up");
+        console.log("🗑️ Temporary file cleaned up");
       } catch (error) {
         console.log(
           "⚠️ Temp file cleanup error (non-critical):",
@@ -112,18 +136,7 @@ export default async function handler(req, res) {
         );
       }
 
-      // For local development, also save a copy locally (optional)
-      if (!isVercel) {
-        try {
-          const localPath = path.join(uploadDir, driveFilename);
-          await fs.writeFile(localPath, fileContent);
-          console.log("💾 Local backup saved:", localPath);
-        } catch (error) {
-          console.log("⚠️ Local backup failed (non-critical):", error.message);
-        }
-      }
-
-      // Return success response
+      // Return success response ONLY after Google Drive confirmation
       res.status(200).json({
         success: true,
         filename: driveFilename,
@@ -136,40 +149,33 @@ export default async function handler(req, res) {
         driveViewUrl: driveResult.viewUrl,
         driveEmbedUrl: driveResult.embedUrl,
         environment: isVercel ? "production" : "local",
-        note: "PDF uploaded to Google Drive (FREE!)",
+        message: "✅ PDF successfully uploaded to Google Drive!",
+        note: "File confirmed in Google Drive - FREE storage!",
       });
     } catch (driveError) {
       console.error("❌ Google Drive upload failed:", driveError);
 
-      // Fallback to old base64 method if Google Drive fails
-      console.log("🔄 Falling back to base64 storage...");
-
-      const base64Content = fileContent.toString("base64");
-
-      // Clean up temp file
+      // Clean up temp file on failure
       try {
         await fs.unlink(file.filepath);
+        console.log("🗑️ Temporary file cleaned up after failure");
       } catch (error) {
         console.log("⚠️ Temp file cleanup error:", error.message);
       }
 
-      res.status(200).json({
-        success: true,
-        filename: driveFilename,
-        originalName: originalName,
-        url: `/api/serve-pdf/${driveFilename}`,
-        size: file.size,
-        content: base64Content,
-        isBase64: true,
-        environment: isVercel ? "production" : "local",
-        storageType: "base64_fallback",
-        note: "Google Drive failed, using base64 fallback",
-        error: driveError.message,
+      // Return error - NO FALLBACK, NO SUCCESS WITHOUT GOOGLE DRIVE
+      res.status(500).json({
+        success: false,
+        error: "Google Drive upload failed",
+        details: driveError.message,
+        message: "❌ Upload failed - file not saved anywhere",
+        note: "Please check your Google Drive Service Account configuration",
       });
     }
   } catch (error) {
     console.error("💥 PDF upload error:", error);
     res.status(500).json({
+      success: false,
       error: "Failed to upload PDF",
       details: error.message,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined,

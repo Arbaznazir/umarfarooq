@@ -58,9 +58,12 @@ export default function PostPDFViewer({ pdfAttachment }) {
   const pdfUrl = `/api/serve-pdf/${encodeURIComponent(pdfAttachment.filename)}`;
 
   // Check if this is a metadata_only PDF (too large to be stored)
+  // But Google Drive files should always be viewable regardless of size
   const isMetadataOnly =
-    pdfAttachment.storageType === "metadata_only" ||
-    (!pdfAttachment.content && !pdfAttachment.contentDocId);
+    pdfAttachment.storageType === "metadata_only" &&
+    !pdfAttachment.driveFileId && // If it has Google Drive file ID, it's viewable
+    !pdfAttachment.content &&
+    !pdfAttachment.contentDocId;
 
   // Use actual file size if available, otherwise fall back to stored size
   const displaySize = actualFileSize || pdfAttachment.size || 0;

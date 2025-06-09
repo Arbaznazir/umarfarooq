@@ -1,194 +1,201 @@
-# 🚀 Google Drive API Setup Guide
+# 🔧 Google Drive Integration Setup Guide
 
-**FREE 15GB PDF Storage for Your Islamic Website!**
+This guide will help you set up Google Drive integration for your Islamic website to store PDF files **for FREE** (15GB storage).
 
-This guide will help you set up Google Drive API for free PDF storage and serving.
+## 🎯 Why Google Drive?
 
-## 🎯 Benefits of Google Drive Integration
-
-✅ **FREE 15GB Storage** (vs Firebase Storage which is paid)  
-✅ **Fast CDN Delivery** via Google's infrastructure  
-✅ **Production Ready** - works on any hosting platform  
-✅ **No Size Limits** (up to 5TB per file)  
-✅ **Automatic Backup** and sync across devices  
-✅ **Easy Management** via Google Drive interface
+- ✅ **FREE 15GB storage** (vs Firebase Storage being paid)
+- ✅ **Fast CDN delivery** via Google's infrastructure
+- ✅ **Production ready** - works on any hosting platform
+- ✅ **No size limits** (up to 5TB per file)
+- ✅ **Easy management** via Google Drive interface
+- ✅ **Automatic backup** and sync across devices
 
 ---
 
-## 📋 Step 1: Create Google Cloud Project
+## 📋 Prerequisites
 
-1. **Go to Google Cloud Console**: https://console.cloud.google.com/
-2. **Create New Project**:
-
-   - Click "Select a project" → "New Project"
-   - Project name: `Islamic-Website-Storage`
-   - Click "Create"
-
-3. **Enable Google Drive API**:
-   - Go to: https://console.cloud.google.com/apis/library/drive.googleapis.com
-   - Click "Enable"
+- Google Account
+- Access to Google Cloud Console
+- Your Next.js project with environment variables
 
 ---
 
-## 🔑 Step 2: Create API Key
+## 🚀 Step-by-Step Setup
 
-1. **Go to Credentials**:
+### Step 1: Create Google Cloud Project
 
-   - Visit: https://console.cloud.google.com/apis/credentials
-   - Click "Create Credentials" → "API Key"
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click **"Create Project"** or select existing project
+3. Enter project name: `Islamic Website Storage`
+4. Click **"Create"**
 
-2. **Secure Your API Key**:
+### Step 2: Enable Google Drive API
 
-   - Click "Restrict Key"
-   - **API restrictions**: Select "Google Drive API"
-   - **Application restrictions**:
-     - Choose "HTTP referrers (web sites)"
-     - Add: `http://localhost:3000/*` (for development)
-     - Add: `https://your-domain.com/*` (for production)
-   - Click "Save"
+1. In Google Cloud Console, go to **"APIs & Services" > "Library"**
+2. Search for **"Google Drive API"**
+3. Click on **"Google Drive API"**
+4. Click **"Enable"**
 
-3. **Copy Your API Key**:
-   ```bash
-   # Your API key will look like this:
-   AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+### Step 3: Create Service Account (Required for File Uploads)
+
+1. Go to **"APIs & Services" > "Credentials"**
+2. Click **"+ CREATE CREDENTIALS"**
+3. Select **"Service account"**
+4. Fill in details:
+   - **Service account name:** `islamic-website-drive`
+   - **Service account ID:** `islamic-website-drive` (auto-filled)
+   - **Description:** `Service account for PDF uploads to Google Drive`
+5. Click **"Create and Continue"**
+6. **Grant this service account access to project:**
+   - Select role: **"Editor"** (or **"Storage Admin"** for minimal permissions)
+7. Click **"Continue"** then **"Done"**
+
+### Step 4: Generate Service Account Key
+
+1. In **"Credentials"** page, find your service account
+2. Click on the service account email
+3. Go to **"Keys"** tab
+4. Click **"Add Key" > "Create new key"**
+5. Select **"JSON"** format
+6. Click **"Create"**
+7. **Download the JSON file** (keep it secure!)
+
+### Step 5: Extract Credentials from JSON
+
+Open the downloaded JSON file. You'll need:
+
+- `client_email` (Service Account Email)
+- `private_key` (Service Account Private Key)
+
+### Step 6: Create Google Drive Folder (Optional)
+
+1. Go to [Google Drive](https://drive.google.com)
+2. Create a new folder: **"Islamic Website PDFs"**
+3. Open the folder and copy the **Folder ID** from URL:
+   ```
+   https://drive.google.com/drive/folders/FOLDER_ID_HERE
    ```
 
----
+### Step 7: Share Folder with Service Account
 
-## 📁 Step 3: Create Google Drive Folder (Optional)
-
-1. **Go to Google Drive**: https://drive.google.com/
-2. **Create Folder**:
-
-   - Click "New" → "Folder"
-   - Name: `Islamic-Website-PDFs`
-   - Click "Create"
-
-3. **Get Folder ID**:
-
-   - Open the folder
-   - Copy ID from URL: `https://drive.google.com/drive/folders/FOLDER_ID_HERE`
-   - Example: `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms`
-
-4. **Make Folder Public** (Important!):
-   - Right-click folder → "Share"
-   - Click "Change to anyone with the link"
-   - Permission: "Viewer"
-   - Click "Done"
+1. Right-click your folder in Google Drive
+2. Click **"Share"**
+3. Add your **service account email** (from JSON file)
+4. Set permission to **"Editor"**
+5. Click **"Send"**
 
 ---
 
-## ⚙️ Step 4: Update Environment Variables
+## 🔐 Environment Variables Setup
 
-1. **Edit your `.env` file**:
+Add these to your `.env` file:
 
-   ```bash
-   # Replace these values with your actual API key and folder ID
-   GOOGLE_DRIVE_API_KEY=AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   GOOGLE_DRIVE_FOLDER_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
-   ```
+```env
+# =============================================================================
+# GOOGLE DRIVE CONFIGURATION (Service Account Authentication)
+# =============================================================================
 
-2. **Restart your development server**:
+# Service Account Email (from JSON file: client_email)
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
+
+# Service Account Private Key (from JSON file: private_key)
+# Note: Keep the quotes and \n characters as they are
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour_Private_Key_Here\n-----END PRIVATE KEY-----\n"
+
+# Google Drive Folder ID (Optional - folder where PDFs will be stored)
+# If not set, files will be stored in the root of the service account's accessible drive
+GOOGLE_DRIVE_FOLDER_ID=your_google_drive_folder_id_here
+```
+
+### 🔒 Important Security Notes:
+
+- **Never commit** the JSON file to your repository
+- **Keep the private key secure** - treat it like a password
+- **Use environment variables** for all credentials
+- **Add .env to .gitignore**
+
+---
+
+## 🧪 Testing the Setup
+
+1. **Restart your development server:**
+
    ```bash
    npm run dev
    ```
 
----
+2. **Test the connection:**
 
-## 🧪 Step 5: Test the Integration
+   - Go to: `http://localhost:3000/api/test-gdrive`
+   - You should see: `✅ Google Drive API is working correctly!`
 
-1. **Test Google Drive API**:
-
-   ```bash
-   curl http://localhost:3001/api/test-gdrive
-   ```
-
-2. **Upload a PDF**:
-   - Go to: http://localhost:3001/admin/dashboard
+3. **Test file upload:**
+   - Go to: `http://localhost:3000/admin/dashboard`
    - Try uploading a PDF
-   - Should see "Google Drive" in the upload response
+   - Check your Google Drive folder for the uploaded file
 
 ---
 
-## 🔧 Troubleshooting
+## 🎯 Production Deployment
 
-### Error: "API key not valid"
+### For Vercel:
 
-- **Solution**: Check your API key restrictions
-- Make sure `localhost:3000` is allowed in HTTP referrers
+```bash
+vercel env add GOOGLE_SERVICE_ACCOUNT_EMAIL
+vercel env add GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+vercel env add GOOGLE_DRIVE_FOLDER_ID
+```
 
-### Error: "Folder not found"
+### For other platforms:
 
-- **Solution**: Check folder ID and permissions
-- Make sure folder is shared with "Anyone with the link"
-
-### Error: "Permission denied"
-
-- **Solution**: Enable Google Drive API in Cloud Console
-- Check API key has Drive API enabled
+Add the environment variables through your hosting platform's dashboard.
 
 ---
 
-## 🌐 Production Setup
+## 🔍 Troubleshooting
 
-1. **Add your domain** to API key restrictions:
+### ❌ "Service Account not initialized"
 
-   ```
-   https://yourdomain.com/*
-   https://www.yourdomain.com/*
-   ```
+- Check if `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` are set
+- Verify the private key format (should include `\n` characters)
 
-2. **Update environment variables** on Vercel:
+### ❌ "Permission denied" errors
 
-   - Go to Vercel Dashboard → Project → Settings → Environment Variables
-   - Add `GOOGLE_DRIVE_API_KEY`
-   - Add `GOOGLE_DRIVE_FOLDER_ID`
+- Ensure the service account has access to your Google Drive folder
+- Check if the folder ID is correct
+- Verify the service account has "Editor" permissions
 
-3. **Deploy and test** in production
+### ❌ "Invalid credentials"
 
----
+- Re-download the JSON file from Google Cloud Console
+- Copy the exact values from the JSON file
+- Ensure no extra spaces or characters in environment variables
 
-## 📊 Usage Limits (FREE!)
+### ❌ File uploads failing
 
-- **Storage**: 15GB free (shared with Gmail and Photos)
-- **API Calls**: 1 billion per day (free)
-- **Upload Size**: Up to 5TB per file
-- **Bandwidth**: Unlimited (served via Google CDN)
-
----
-
-## 🔒 Security Best Practices
-
-1. **API Key Restrictions**:
-
-   - ✅ Restrict to Google Drive API only
-   - ✅ Restrict to your domains only
-   - ❌ Never commit API keys to git
-
-2. **Folder Permissions**:
-
-   - ✅ Set folder to "Anyone with link can view"
-   - ✅ Create dedicated folder for website files
-   - ❌ Don't store sensitive files in the same folder
-
-3. **Environment Variables**:
-   - ✅ Use different API keys for dev/prod
-   - ✅ Store in environment variables only
-   - ❌ Never hardcode keys in source code
+- Check Google Drive API is enabled
+- Verify service account has proper scopes
+- Test with a smaller file first
 
 ---
 
-## 🎉 What You Get
+## 📚 Additional Resources
 
-After setup, your Islamic website will have:
-
-- ✅ **Free PDF storage** via Google Drive
-- ✅ **Fast PDF serving** via Google CDN
-- ✅ **Production-ready** deployment
-- ✅ **Easy file management** via Google Drive
-- ✅ **Automatic backups** and sync
-- ✅ **No monthly bills** for storage
+- [Google Drive API Documentation](https://developers.google.com/drive/api/guides/about-sdk)
+- [Service Account Authentication](https://cloud.google.com/docs/authentication/service-accounts)
+- [Google Cloud Console](https://console.cloud.google.com/)
 
 ---
 
-**Ready to set up? Follow the steps above and you'll have free, reliable PDF storage in 10 minutes!** 🚀
+## 🎉 Success!
+
+Once configured, your Islamic website will:
+
+- ✅ Upload PDFs directly to Google Drive
+- ✅ Serve files via Google's fast CDN
+- ✅ Use FREE storage (15GB limit)
+- ✅ Work in production without any issues
+- ✅ Provide reliable file delivery worldwide
+
+**Enjoy your FREE Google Drive storage!** 🚀
