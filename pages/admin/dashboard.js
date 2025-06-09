@@ -125,16 +125,47 @@ export default function AdminDashboard() {
     }
 
     try {
+      // Prepare PDF attachment data - remove base64 content if too large for Firestore
+      let pdfData = null;
+      if (postPdf) {
+        pdfData = {
+          filename: postPdf.filename,
+          originalName: postPdf.originalName,
+          url: postPdf.url,
+          size: postPdf.size,
+          isBase64: postPdf.isBase64 || false,
+          environment: postPdf.environment || "unknown",
+        };
+
+        // Only include content for small files or when necessary
+        if (postPdf.content && postPdf.content.length < 1000000) {
+          // 1MB limit for Firestore
+          pdfData.content = postPdf.content;
+        }
+
+        console.log("PDF data being saved:", {
+          ...pdfData,
+          content: pdfData.content
+            ? `${pdfData.content.length} characters`
+            : "not included",
+        });
+      }
+
       const postData = {
         title: postTitle,
         content: postContent,
         category: postCategory,
         language: postLanguage,
         featured: postFeatured,
-        pdfAttachment: postPdf,
+        pdfAttachment: pdfData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+
+      console.log("Saving post data:", {
+        ...postData,
+        pdfAttachment: pdfData ? "PDF attached" : "No PDF",
+      });
 
       if (editingPost) {
         await updateDoc(doc(db, "posts", editingPost.id), {
@@ -151,8 +182,8 @@ export default function AdminDashboard() {
       resetPostForm();
       fetchPosts();
     } catch (error) {
-      // Error saving post
-      toast.error("Error saving post");
+      console.error("Error saving post:", error);
+      toast.error(`Error saving post: ${error.message}`);
     }
   };
 

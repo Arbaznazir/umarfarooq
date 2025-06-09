@@ -74,19 +74,33 @@ export default async function handler(req, res) {
       originalName: pdfAttachment?.originalName,
     });
 
-    if (pdfAttachment && pdfAttachment.content && pdfAttachment.isBase64) {
-      console.log("Serving from database base64 content");
+    if (pdfAttachment) {
+      // Try to serve from base64 content if available
+      if (pdfAttachment.content && pdfAttachment.isBase64) {
+        console.log("Serving from database base64 content");
 
-      // Serve from base64 content stored in database
-      const fileBuffer = Buffer.from(pdfAttachment.content, "base64");
+        const fileBuffer = Buffer.from(pdfAttachment.content, "base64");
 
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "inline");
-      res.setHeader("Cache-Control", "public, max-age=31536000");
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Length", fileBuffer.length.toString());
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Length", fileBuffer.length.toString());
 
-      return res.send(fileBuffer);
+        return res.send(fileBuffer);
+      } else {
+        // If no content stored (large file), return a placeholder or redirect
+        console.log(
+          "PDF attachment found but content not stored (likely large file)"
+        );
+        return res.status(404).json({
+          error: "PDF content not available",
+          message:
+            "Large PDF files are not stored in database. Please re-upload the file.",
+          filename: filename,
+          originalName: pdfAttachment.originalName || "Unknown",
+        });
+      }
     }
 
     console.log("PDF content not available");
