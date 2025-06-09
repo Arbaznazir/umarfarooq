@@ -81,13 +81,15 @@ export default async function handler(req, res) {
       buffer = Buffer.from(response.data);
     }
 
-    // Set appropriate headers for PDF serving
+    // Set appropriate headers for PDF serving (inline viewing)
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", buffer.length);
     res.setHeader("Content-Disposition", `inline; filename="document.pdf"`);
     res.setHeader("Cache-Control", "public, max-age=3600"); // Cache for 1 hour
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+    res.setHeader("X-Content-Type-Options", "nosniff");
 
     console.log("✅ Serving PDF via proxy, size:", buffer.length);
     return res.send(buffer);
@@ -111,6 +113,8 @@ export default async function handler(req, res) {
         res.setHeader("Content-Disposition", `inline; filename="document.pdf"`);
         res.setHeader("Cache-Control", "public, max-age=3600");
         res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.setHeader("X-Content-Type-Options", "nosniff");
 
         console.log(
           "✅ Fallback successful, serving PDF, size:",
