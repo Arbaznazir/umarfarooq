@@ -1,4 +1,11 @@
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 
 export default async function handler(req, res) {
@@ -8,9 +15,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Filename is required" });
   }
 
-  try {
-    console.log("🔍 Debug: Looking for PDF data:", filename);
+  console.log("🔍 Debug PDF:", filename);
 
+  try {
+    // Query for posts with this PDF
     const postsQuery = query(
       collection(db, "posts"),
       where("pdfAttachment.filename", "==", filename)
@@ -21,8 +29,8 @@ export default async function handler(req, res) {
     if (snapshot.empty) {
       return res.status(404).json({
         error: "PDF not found",
-        filename: filename,
-        message: "No post found with this PDF filename",
+        message: `No post found with PDF filename: ${filename}`,
+        searched: filename,
       });
     }
 
@@ -30,43 +38,68 @@ export default async function handler(req, res) {
     const postData = postDoc.data();
     const pdfAttachment = postData.pdfAttachment;
 
-    // Create a debug response with all relevant info (excluding actual content for size)
     const debugInfo = {
-      found: true,
       postId: postDoc.id,
       postTitle: postData.title,
       pdfAttachment: {
         filename: pdfAttachment?.filename,
         originalName: pdfAttachment?.originalName,
-        url: pdfAttachment?.url,
         size: pdfAttachment?.size,
-        isBase64: pdfAttachment?.isBase64,
-        environment: pdfAttachment?.environment,
-        storageType: pdfAttachment?.storageType,
         hasContent: !!pdfAttachment?.content,
         contentLength: pdfAttachment?.content
           ? pdfAttachment.content.length
           : 0,
-        contentPreview: pdfAttachment?.content
-          ? pdfAttachment.content.substring(0, 100) + "..."
-          : null,
+        contentType: typeof pdfAttachment?.content,
+        isBase64: pdfAttachment?.isBase64,
+        storageType: pdfAttachment?.storageType,
         hasContentDocId: !!pdfAttachment?.contentDocId,
         contentDocId: pdfAttachment?.contentDocId,
-        warning: pdfAttachment?.warning,
-        note: pdfAttachment?.note,
+        environment: pdfAttachment?.environment,
+        url: pdfAttachment?.url,
       },
-      timestamp: new Date().toISOString(),
     };
 
-    console.log("📄 Debug PDF data:", debugInfo);
+    // If there's a separate content document, check it too
+    if (pdfAttachment?.contentDocId) {
+      try {
+        const contentDoc = await getDoc(
+          doc(db, "pdf_contents", pdfAttachment.contentDocId)
+        );
+        debugInfo.separateContent = {
+          exists: contentDoc.exists(),
+          hasContent: contentDoc.exists()
+            ? !!contentDoc.data()?.content
+            : false,
+          contentLength: contentDoc.exists()
+            ? contentDoc.data()?.content?.length || 0
+            : 0,
+        };
+      } catch (error) {
+        debugInfo.separateContentError = error.message;
+      }
+    }
 
-    res.status(200).json(debugInfo);
+    // Check if content starts with PDF header (if base64)
+    if (pdfAttachment?.content) {
+      try {
+        const buffer = Buffer.from(pdfAttachment.content, "base64");
+        const header = buffer.toString("ascii", 0, 4);
+        debugInfo.pdfHeader = {
+          isValidPDF: header === "%PDF",
+          header: header,
+          bufferLength: buffer.length,
+        };
+      } catch (error) {
+        debugInfo.pdfHeaderError = error.message;
+      }
+    }
+
+    return res.status(200).json(debugInfo);
   } catch (error) {
-    console.error("💥 Debug error:", error);
-    res.status(500).json({
+    console.error("Debug error:", error);
+    return res.status(500).json({
       error: "Debug failed",
       details: error.message,
-      filename: filename,
     });
   }
 }

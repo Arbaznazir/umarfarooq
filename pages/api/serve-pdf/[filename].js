@@ -17,7 +17,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Filename is required" });
   }
 
-  console.log("🔍 Serving PDF:", filename);
+  // Decode the filename in case it has spaces or special characters
+  const decodedFilename = decodeURIComponent(filename);
+  console.log("🔍 Serving PDF:", {
+    original: filename,
+    decoded: decodedFilename,
+  });
 
   try {
     // Enhanced environment detection
@@ -26,7 +31,7 @@ export default async function handler(req, res) {
 
     console.log("🌍 Environment check:", {
       isVercel: !!isVercel,
-      filename,
+      filename: decodedFilename,
     });
 
     // First try to serve from file system (local development)
@@ -36,7 +41,7 @@ export default async function handler(req, res) {
         "public",
         "uploads",
         "pdfs",
-        filename
+        decodedFilename
       );
 
       console.log("📁 Checking local file:", filePath);
@@ -57,20 +62,50 @@ export default async function handler(req, res) {
     }
 
     // For Vercel or if file not found locally, try to get from database
-    console.log("🔍 Querying database for PDF:", filename);
+    console.log("🔍 Querying database for PDF:", decodedFilename);
 
-    const postsQuery = query(
-      collection(db, "posts"),
-      where("pdfAttachment.filename", "==", filename)
-    );
+    // Try both encoded and decoded filename in database queries
+    const queries = [
+      query(
+        collection(db, "posts"),
+        where("pdfAttachment.filename", "==", decodedFilename)
+      ),
+      query(
+        collection(db, "posts"),
+        where("pdfAttachment.filename", "==", filename)
+      ),
+    ];
 
-    const snapshot = await getDocs(postsQuery);
+    let snapshot = null;
+    let searchedFilename = null;
 
-    if (snapshot.empty) {
-      console.log("❌ PDF not found in database");
+    for (const q of queries) {
+      snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        searchedFilename = q._query.filters[0].value;
+        console.log("✅ Found PDF with filename:", searchedFilename);
+        break;
+      }
+    }
+
+    if (!snapshot || snapshot.empty) {
+      console.log("❌ PDF not found in database with either filename variant");
+
+      // Let's also try a broader search to see if there are any PDFs with similar names
+      const allPDFsQuery = query(
+        collection(db, "posts"),
+        where("pdfAttachment", "!=", null)
+      );
+      const allPDFs = await getDocs(allPDFsQuery);
+      const availableFilenames = allPDFs.docs
+        .map((doc) => doc.data().pdfAttachment?.filename)
+        .filter(Boolean);
+
       return res.status(404).json({
         error: "PDF file not found",
-        details: `No post found with PDF filename: ${filename}`,
+        details: `No post found with PDF filename: ${decodedFilename}`,
+        searchedFilenames: [decodedFilename, filename],
+        availableFilenames: availableFilenames.slice(0, 10), // Show up to 10 available filenames
       });
     }
 
@@ -161,6 +196,7 @@ export default async function handler(req, res) {
               console.log("✅ Valid PDF header detected");
             } else {
               console.log("⚠️ No PDF header found, but proceeding anyway");
+              console.log("🔍 Header found:", header);
             }
           }
         } catch (base64Error) {
@@ -202,7 +238,7 @@ export default async function handler(req, res) {
       return res.status(404).json({
         error: "PDF content not available",
         message: "PDF metadata found but content is not accessible.",
-        filename: filename,
+        filename: decodedFilename,
         originalName: pdfAttachment.originalName || "Unknown",
         storageType: pdfAttachment.storageType || "unknown",
         contentSource,
@@ -222,6 +258,7 @@ export default async function handler(req, res) {
     res.status(500).json({
       error: "Error serving PDF file",
       details: error.message,
+      filename: decodedFilename,
       stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
