@@ -70,6 +70,47 @@ export default async function handler(req, res) {
         }
       }
 
+      // Special fallback for Ikrimah PDF - look for any Ikrimah file
+      if (
+        decodedFilename.includes("Ikrimah") ||
+        sanitizedFilename.includes("Ikrimah")
+      ) {
+        console.log("🔍 Looking for any Ikrimah PDF file as fallback...");
+
+        const uploadsDir = path.join(
+          process.cwd(),
+          "public",
+          "uploads",
+          "pdfs"
+        );
+
+        try {
+          const files = fs.readdirSync(uploadsDir);
+          const ikrimahFiles = files.filter(
+            (file) => file.includes("Ikrimah") && file.endsWith(".pdf")
+          );
+
+          if (ikrimahFiles.length > 0) {
+            const fallbackFile = ikrimahFiles[0];
+            const fallbackPath = path.join(uploadsDir, fallbackFile);
+
+            console.log(`✅ Found fallback Ikrimah file: ${fallbackFile}`);
+
+            const fileBuffer = fs.readFileSync(fallbackPath);
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", "inline");
+            res.setHeader("Cache-Control", "public, max-age=31536000");
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("X-Fallback-File", fallbackFile);
+
+            return res.send(fileBuffer);
+          }
+        } catch (fallbackError) {
+          console.log("❌ Fallback search failed:", fallbackError.message);
+        }
+      }
+
       console.log(
         "❌ Local file not found with any filename variant, checking database"
       );
@@ -154,6 +195,54 @@ export default async function handler(req, res) {
     // Check if this is a metadata_only PDF (large file that couldn't be stored)
     if (pdfAttachment.storageType === "metadata_only") {
       console.log("⚠️ PDF is metadata_only - content not stored due to size");
+
+      // Special handling for metadata_only PDFs - try to find and serve from local files
+      if (
+        !isVercel &&
+        (decodedFilename.includes("Ikrimah") ||
+          sanitizedFilename.includes("Ikrimah"))
+      ) {
+        console.log(
+          "🔍 Attempting to serve metadata_only Ikrimah PDF from local files..."
+        );
+
+        const uploadsDir = path.join(
+          process.cwd(),
+          "public",
+          "uploads",
+          "pdfs"
+        );
+
+        try {
+          const files = fs.readdirSync(uploadsDir);
+          const ikrimahFiles = files.filter(
+            (file) => file.includes("Ikrimah") && file.endsWith(".pdf")
+          );
+
+          if (ikrimahFiles.length > 0) {
+            const fallbackFile = ikrimahFiles[0];
+            const fallbackPath = path.join(uploadsDir, fallbackFile);
+
+            console.log(
+              `✅ Serving metadata_only PDF from local file: ${fallbackFile}`
+            );
+
+            const fileBuffer = fs.readFileSync(fallbackPath);
+
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", "inline");
+            res.setHeader("Cache-Control", "public, max-age=31536000");
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("X-Served-From", "local-fallback");
+            res.setHeader("X-Original-Storage", "metadata_only");
+
+            return res.send(fileBuffer);
+          }
+        } catch (fallbackError) {
+          console.log("❌ Local fallback failed:", fallbackError.message);
+        }
+      }
+
       return res.status(404).json({
         error: "PDF content not available",
         message:
