@@ -7,6 +7,7 @@ import { db } from "../../lib/firebase";
 import { ArrowLeft, Calendar, Book, Star } from "lucide-react";
 import { QuranicContent } from "../../components/QuranicText";
 import IslamicTextRenderer from "../../components/IslamicTextRenderer";
+import PostPDFViewer from "../../components/PostPDFViewer";
 
 export default function PostPage() {
   const [post, setPost] = useState(null);
@@ -131,6 +132,11 @@ export default function PostPage() {
                 className="text-lg leading-relaxed"
               />
             </div>
+
+            {/* PDF Attachment */}
+            {post.pdfAttachment && (
+              <PostPDFViewer pdfAttachment={post.pdfAttachment} />
+            )}
           </div>
 
           {/* Post Footer */}

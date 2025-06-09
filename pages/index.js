@@ -10,7 +10,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { Book, Calendar, Heart, Star, Menu, X } from "lucide-react";
+import { Book, Calendar, Heart, Star, Menu, X, FileText } from "lucide-react";
 import DatabaseInitializer from "../components/DatabaseInitializer";
 import FaviconHead from "../components/FaviconHead";
 import { QuranicContent } from "../components/QuranicText";
@@ -116,6 +116,13 @@ export default function Home() {
                 <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-islamic-green transition-all duration-300 group-hover:w-full"></span>
               </Link>
               <Link
+                href="/library"
+                className="text-gray-700 hover:text-islamic-green font-medium transition-colors duration-300 relative group"
+              >
+                Library
+                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-islamic-green transition-all duration-300 group-hover:w-full"></span>
+              </Link>
+              <Link
                 href="/admin"
                 className="bg-islamic-gradient text-white px-6 py-2 rounded-full hover:shadow-glow transition-all duration-300 font-medium"
               >
@@ -157,6 +164,13 @@ export default function Home() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   📚 Categories
+                </Link>
+                <Link
+                  href="/library"
+                  className="text-gray-700 hover:text-islamic-green hover:bg-gray-50 block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  📖 Library
                 </Link>
                 <Link
                   href="/admin"
@@ -304,7 +318,7 @@ export default function Home() {
                 <Link key={post.id} href={`/post/${post.id}`}>
                   <article className="premium-card rounded-2xl overflow-hidden cursor-pointer group relative">
                     {/* Featured Badge */}
-                    <div className="absolute top-4 right-4 z-10">
+                    <div className="absolute top-4 right-4 z-10 flex flex-col space-y-2">
                       <div className="bg-gold-gradient px-3 py-1 rounded-full shadow-glow">
                         <div className="flex items-center">
                           <Star className="h-3 w-3 text-white mr-1" />
@@ -313,6 +327,16 @@ export default function Home() {
                           </span>
                         </div>
                       </div>
+                      {post.pdfAttachment && (
+                        <div className="bg-red-600 px-3 py-1 rounded-full shadow-glow">
+                          <div className="flex items-center">
+                            <FileText className="h-3 w-3 text-white mr-1" />
+                            <span className="text-xs text-white font-medium">
+                              PDF
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-8">
@@ -400,9 +424,17 @@ export default function Home() {
                   <article className="premium-card rounded-2xl overflow-hidden cursor-pointer group">
                     <div className="p-8">
                       <div className="flex items-center justify-between mb-6">
-                        <span className="inline-flex items-center px-3 py-1 bg-islamic-gradient text-white text-sm font-medium rounded-full">
-                          {post.category}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex items-center px-3 py-1 bg-islamic-gradient text-white text-sm font-medium rounded-full">
+                            {post.category}
+                          </span>
+                          {post.pdfAttachment && (
+                            <span className="inline-flex items-center px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">
+                              <FileText className="h-3 w-3 mr-1" />
+                              PDF
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center text-sm text-gray-500">
                           <Calendar className="h-4 w-4 mr-1" />
                           {post.createdAt?.toDate?.()?.toLocaleDateString() ||

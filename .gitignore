@@ -75,4 +75,7 @@ test-*.js
 
 # Logs
 logs
-*.log 
+*.log
+
+# Uploaded files
+public/uploads/ 

@@ -40,6 +40,7 @@ import {
   AdminTextHelper,
   IslamicTextRenderer,
 } from "../../components/IslamicTextRenderer";
+import PDFUploader from "../../components/PDFUploader";
 
 export default function AdminDashboard() {
   const [user, loading] = useAuthState(auth);
@@ -58,6 +59,8 @@ export default function AdminDashboard() {
   const [postLanguage, setPostLanguage] = useState("english");
   const [postFeatured, setPostFeatured] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [postPdf, setPostPdf] = useState(null);
+  const [pdfUploading, setPdfUploading] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [categoryDescription, setCategoryDescription] = useState("");
 
@@ -128,6 +131,7 @@ export default function AdminDashboard() {
         category: postCategory,
         language: postLanguage,
         featured: postFeatured,
+        pdfAttachment: postPdf,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -198,6 +202,7 @@ export default function AdminDashboard() {
     setPostCategory(post.category);
     setPostLanguage(post.language);
     setPostFeatured(post.featured || false);
+    setPostPdf(post.pdfAttachment || null);
     setShowPostForm(true);
   };
 
@@ -208,6 +213,8 @@ export default function AdminDashboard() {
     setPostLanguage("english");
     setPostFeatured(false);
     setShowPreview(false);
+    setPostPdf(null);
+    setPdfUploading(false);
     setShowPostForm(false);
     setEditingPost(null);
   };
@@ -502,6 +509,12 @@ export default function AdminDashboard() {
                               {post.featured && (
                                 <Star className="h-4 w-4 text-amber-500 mr-2" />
                               )}
+                              {post.pdfAttachment && (
+                                <FileText
+                                  className="h-4 w-4 text-red-600 mr-2"
+                                  title="Has PDF attachment"
+                                />
+                              )}
                               <div className="text-sm font-medium text-gray-900 line-clamp-2">
                                 {post.title}
                               </div>
@@ -774,6 +787,119 @@ export default function AdminDashboard() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* PDF Attachment Section */}
+                <div className="border-t border-gray-200 pt-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-4">
+                    PDF Attachment (Optional)
+                  </label>
+
+                  {!postPdf ? (
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-islamic-green transition-colors duration-200">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={async (e) => {
+                          const file = e.target.files[0];
+                          if (file && file.type === "application/pdf") {
+                            setPdfUploading(true);
+                            try {
+                              const formData = new FormData();
+                              formData.append("pdf", file);
+
+                              const response = await fetch("/api/upload-pdf", {
+                                method: "POST",
+                                body: formData,
+                              });
+
+                              const result = await response.json();
+                              if (result.success) {
+                                setPostPdf(result);
+                                toast.success("PDF uploaded successfully!");
+                              } else {
+                                toast.error(result.error || "Upload failed");
+                              }
+                            } catch (error) {
+                              toast.error("Failed to upload PDF");
+                            } finally {
+                              setPdfUploading(false);
+                            }
+                          } else {
+                            toast.error("Please select a PDF file");
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        disabled={pdfUploading}
+                      />
+
+                      {pdfUploading ? (
+                        <div className="space-y-3">
+                          <div className="animate-spin mx-auto w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full"></div>
+                          <p className="text-blue-600 font-medium">
+                            Uploading PDF...
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="mx-auto w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                            <FileText className="h-6 w-6 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="text-gray-900 font-medium">
+                              Upload PDF Document
+                            </p>
+                            <p className="text-gray-500 text-sm">
+                              Click to browse or drag and drop
+                            </p>
+                            <p className="text-gray-400 text-xs mt-1">
+                              Maximum file size: 50MB
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="bg-green-100 rounded-lg p-2">
+                            <FileText className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-green-900">
+                              {postPdf.originalName}
+                            </p>
+                            <p className="text-green-700 text-sm">
+                              {(postPdf.size / (1024 * 1024)).toFixed(2)} MB
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <a
+                            href={postPdf.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-green-600 hover:text-green-700 text-sm font-medium"
+                          >
+                            Preview
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setPostPdf(null)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-gray-500 text-xs mt-2">
+                    PDF will be embedded in the post and available for download
+                    by readers
+                  </p>
                 </div>
 
                 <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">

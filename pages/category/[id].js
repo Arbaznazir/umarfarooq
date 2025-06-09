@@ -23,6 +23,7 @@ import {
   Users,
   Clock,
   Globe,
+  FileText,
 } from "lucide-react";
 import { QuranicContent } from "../../components/QuranicText";
 
@@ -585,9 +586,17 @@ export default function CategoryPage() {
 
                       <div className="relative z-10">
                         <div className="flex items-center justify-between mb-8">
-                          <span className="inline-flex items-center px-5 py-3 bg-gradient-to-r from-islamic-green to-emerald-600 text-white text-sm font-black rounded-full transform group-hover:scale-105 transition-transform duration-300 shadow-xl">
-                            {post.category}
-                          </span>
+                          <div className="flex items-center space-x-3">
+                            <span className="inline-flex items-center px-5 py-3 bg-gradient-to-r from-islamic-green to-emerald-600 text-white text-sm font-black rounded-full transform group-hover:scale-105 transition-transform duration-300 shadow-xl">
+                              {post.category}
+                            </span>
+                            {post.pdfAttachment && (
+                              <span className="inline-flex items-center px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs font-bold rounded-full shadow-lg">
+                                <FileText className="h-3 w-3 mr-1" />
+                                PDF
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center text-sm text-gray-600 bg-white/90 rounded-full px-4 py-2 shadow-lg">
                             <Clock className="h-4 w-4 mr-2" />
                             {post.createdAt?.toDate?.()?.toLocaleDateString() ||
