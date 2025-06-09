@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       filename: decodedFilename,
     });
 
-    // First try to serve from file system (local development)
+    // First try to serve from file system (local development only)
     if (!isVercel) {
       // Try both the original and sanitized filenames
       const filePaths = [
@@ -63,6 +63,7 @@ export default async function handler(req, res) {
           const stats = fs.statSync(filePath);
           const fileBuffer = fs.readFileSync(filePath);
 
+          // Set proper headers for inline viewing and download
           res.setHeader("Content-Type", "application/pdf");
           res.setHeader("Content-Disposition", "inline");
           res.setHeader("Content-Length", stats.size.toString());
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
       console.log("❌ Local file not found, checking database");
     }
 
-    // For Vercel or if file not found locally, try to get from database
+    // For Vercel or if file not found locally, get from database
     console.log("🔍 Querying database for PDF");
 
     // Try multiple filename variants in database queries
@@ -138,11 +139,111 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check if this is a metadata_only PDF (large file that couldn't be stored)
-    if (pdfAttachment.storageType === "metadata_only") {
-      console.log("⚠️ PDF is metadata_only - trying local fallback");
+    // Try to get PDF content from database first (for all environments)
+    let pdfContent = null;
+    let contentSource = "none";
 
-      // Try to serve from local files as fallback
+    // Method 1: Direct content (most common)
+    if (pdfAttachment.content && typeof pdfAttachment.content === "string") {
+      console.log("📝 Found direct content");
+      pdfContent = pdfAttachment.content;
+      contentSource = "direct";
+    }
+    // Method 2: Separate document storage
+    else if (pdfAttachment.contentDocId) {
+      console.log(
+        "🔗 Attempting to retrieve from separate document:",
+        pdfAttachment.contentDocId
+      );
+      try {
+        const contentDoc = await getDoc(
+          doc(db, "pdf_contents", pdfAttachment.contentDocId)
+        );
+        if (contentDoc.exists()) {
+          const data = contentDoc.data();
+          pdfContent = data.content;
+          contentSource = "separate";
+          console.log("✅ Content retrieved from separate document");
+        } else {
+          console.log("❌ Separate content document not found");
+        }
+      } catch (error) {
+        console.error("❌ Error retrieving separate content:", error);
+      }
+    }
+
+    console.log("📊 Content retrieval result:", {
+      contentSource,
+      hasContent: !!pdfContent,
+      contentLength: pdfContent ? pdfContent.length : 0,
+    });
+
+    // If we have content, serve it directly
+    if (pdfContent && typeof pdfContent === "string" && pdfContent.length > 0) {
+      console.log("📤 Attempting to serve PDF content from database");
+
+      try {
+        let fileBuffer;
+
+        // Always try base64 decoding first (most PDFs are stored this way)
+        try {
+          fileBuffer = Buffer.from(pdfContent, "base64");
+          console.log(
+            "✅ Successfully decoded as base64, buffer size:",
+            fileBuffer.length
+          );
+
+          // Validate it's a proper PDF by checking the header
+          if (fileBuffer.length > 4) {
+            const header = fileBuffer.toString("ascii", 0, 4);
+            if (header === "%PDF") {
+              console.log("✅ Valid PDF header detected");
+            } else {
+              console.log("⚠️ No PDF header found, but proceeding anyway");
+              console.log("🔍 Header found:", header);
+            }
+          }
+        } catch (base64Error) {
+          console.log(
+            "❌ Base64 decoding failed, trying as binary:",
+            base64Error.message
+          );
+          fileBuffer = Buffer.from(pdfContent, "binary");
+        }
+
+        // Final validation
+        if (fileBuffer.length === 0) {
+          throw new Error("Empty buffer after all decoding attempts");
+        }
+
+        console.log("✅ Successfully prepared buffer for serving");
+
+        // Set proper headers with correct size for both viewing and downloading
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "inline");
+        res.setHeader("Content-Length", fileBuffer.length.toString());
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("X-Served-From", "database");
+
+        return res.send(fileBuffer);
+      } catch (bufferError) {
+        console.error("❌ Error processing PDF buffer:", bufferError);
+        return res.status(500).json({
+          error: "Error processing PDF content",
+          details: bufferError.message,
+          contentSource,
+          contentLength: pdfContent ? pdfContent.length : 0,
+        });
+      }
+    }
+
+    // If no content but metadata_only, handle differently for local vs production
+    if (pdfAttachment.storageType === "metadata_only") {
+      console.log("⚠️ PDF is metadata_only - handling fallback");
+
+      // Local development: try to serve from local files
       if (!isVercel) {
         const uploadsDir = path.join(
           process.cwd(),
@@ -214,155 +315,54 @@ export default async function handler(req, res) {
         }
       }
 
+      // Production: Return detailed error for metadata_only files
       return res.status(404).json({
-        error: "PDF content not available",
+        error: "PDF content not available in production",
         message:
-          "This PDF file is too large to be stored in the database. Please try downloading it instead.",
+          "This PDF file is too large to be stored in the database and is not available in production environment.",
         filename: decodedFilename,
         originalName: pdfAttachment.originalName || "Unknown",
         storageType: "metadata_only",
         size: pdfAttachment.size,
         isLargeFile: true,
+        isProduction: !!isVercel,
         recommendations: [
-          "Use the Download button to get the file",
-          "Use the Full Screen option to view in a new tab",
-          "Contact the administrator if the file is not accessible",
+          "This file was too large to store in the database",
+          "In production, large files need to be uploaded to a cloud storage service",
+          "Contact the administrator to upload this file to cloud storage",
+          "For now, this file is only available in local development",
         ],
       });
     }
 
-    // Try to get PDF content from database
-    let pdfContent = null;
-    let contentSource = "none";
-
-    // Method 1: Direct content (most common)
-    if (pdfAttachment.content && typeof pdfAttachment.content === "string") {
-      console.log("📝 Found direct content");
-      pdfContent = pdfAttachment.content;
-      contentSource = "direct";
-    }
-    // Method 2: Separate document storage
-    else if (pdfAttachment.contentDocId) {
-      console.log(
-        "🔗 Attempting to retrieve from separate document:",
-        pdfAttachment.contentDocId
-      );
-      try {
-        const contentDoc = await getDoc(
-          doc(db, "pdf_contents", pdfAttachment.contentDocId)
-        );
-        if (contentDoc.exists()) {
-          const data = contentDoc.data();
-          pdfContent = data.content;
-          contentSource = "separate";
-          console.log("✅ Content retrieved from separate document");
-        } else {
-          console.log("❌ Separate content document not found");
-        }
-      } catch (error) {
-        console.error("❌ Error retrieving separate content:", error);
-      }
-    }
-
-    console.log("📊 Content retrieval result:", {
+    // No content available at all
+    console.log("❌ No valid PDF content found");
+    return res.status(404).json({
+      error: "PDF content not available",
+      message: "PDF metadata found but content is not accessible.",
+      filename: decodedFilename,
+      originalName: pdfAttachment.originalName || "Unknown",
+      storageType: pdfAttachment.storageType || "unknown",
       contentSource,
-      hasContent: !!pdfContent,
-      contentLength: pdfContent ? pdfContent.length : 0,
+      isLargeFile: pdfAttachment.storageType === "metadata_only",
+      recommendations:
+        pdfAttachment.storageType === "metadata_only"
+          ? [
+              "This file was too large to store in the database",
+              "Please contact the administrator for access to this file",
+            ]
+          : [
+              "Try refreshing the page",
+              "Contact support if the issue persists",
+            ],
+      debug: {
+        hasContent: !!pdfAttachment.content,
+        hasContentDocId: !!pdfAttachment.contentDocId,
+        isBase64: pdfAttachment.isBase64,
+        contentType: typeof pdfAttachment.content,
+        contentLength: pdfAttachment.content ? pdfAttachment.content.length : 0,
+      },
     });
-
-    // Try to serve the content if available
-    if (pdfContent && typeof pdfContent === "string" && pdfContent.length > 0) {
-      console.log("📤 Attempting to serve PDF content");
-
-      try {
-        let fileBuffer;
-
-        // Always try base64 decoding first (most PDFs are stored this way)
-        try {
-          fileBuffer = Buffer.from(pdfContent, "base64");
-          console.log(
-            "✅ Successfully decoded as base64, buffer size:",
-            fileBuffer.length
-          );
-
-          // Validate it's a proper PDF by checking the header
-          if (fileBuffer.length > 4) {
-            const header = fileBuffer.toString("ascii", 0, 4);
-            if (header === "%PDF") {
-              console.log("✅ Valid PDF header detected");
-            } else {
-              console.log("⚠️ No PDF header found, but proceeding anyway");
-              console.log("🔍 Header found:", header);
-            }
-          }
-        } catch (base64Error) {
-          console.log(
-            "❌ Base64 decoding failed, trying as binary:",
-            base64Error.message
-          );
-          fileBuffer = Buffer.from(pdfContent, "binary");
-        }
-
-        // Final validation
-        if (fileBuffer.length === 0) {
-          throw new Error("Empty buffer after all decoding attempts");
-        }
-
-        console.log("✅ Successfully prepared buffer for serving");
-
-        // Set proper headers with correct size
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", "inline");
-        res.setHeader("Content-Length", fileBuffer.length.toString());
-        res.setHeader("Cache-Control", "public, max-age=31536000");
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("Accept-Ranges", "bytes");
-        res.setHeader("X-Served-From", "database");
-
-        return res.send(fileBuffer);
-      } catch (bufferError) {
-        console.error("❌ Error processing PDF buffer:", bufferError);
-        return res.status(500).json({
-          error: "Error processing PDF content",
-          details: bufferError.message,
-          contentSource,
-          contentLength: pdfContent ? pdfContent.length : 0,
-        });
-      }
-    } else {
-      // No content available
-      console.log("❌ No valid PDF content found");
-      return res.status(404).json({
-        error: "PDF content not available",
-        message: "PDF metadata found but content is not accessible.",
-        filename: decodedFilename,
-        originalName: pdfAttachment.originalName || "Unknown",
-        storageType: pdfAttachment.storageType || "unknown",
-        contentSource,
-        isLargeFile: pdfAttachment.storageType === "metadata_only",
-        recommendations:
-          pdfAttachment.storageType === "metadata_only"
-            ? [
-                "This file was too large to store in the database",
-                "Please use the Download button",
-                "Or try the Full Screen option",
-              ]
-            : [
-                "Try refreshing the page",
-                "Use the Download button as an alternative",
-                "Contact support if the issue persists",
-              ],
-        debug: {
-          hasContent: !!pdfAttachment.content,
-          hasContentDocId: !!pdfAttachment.contentDocId,
-          isBase64: pdfAttachment.isBase64,
-          contentType: typeof pdfAttachment.content,
-          contentLength: pdfAttachment.content
-            ? pdfAttachment.content.length
-            : 0,
-        },
-      });
-    }
   } catch (error) {
     console.error("💥 Error serving PDF:", error);
     res.status(500).json({

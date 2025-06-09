@@ -72,23 +72,19 @@ export default async function handler(req, res) {
     const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_");
     const newFilename = `${timestamp}_${sanitizedName}`;
 
+    // Read file content for processing
+    const fileContent = await fs.readFile(file.filepath);
+    const base64Content = fileContent.toString("base64");
+
+    console.log("File processed:", {
+      filename: newFilename,
+      originalName,
+      size: file.size,
+      base64Length: base64Content.length,
+    });
+
     if (isVercel) {
       console.log("Processing for Vercel deployment");
-
-      // For Vercel deployment - read file content and encode as base64
-      const fileContent = await fs.readFile(file.filepath);
-      const base64Content = fileContent.toString("base64");
-
-      console.log("File processed:", {
-        filename: newFilename,
-        originalName,
-        size: file.size,
-        base64Length: base64Content.length,
-      });
-
-      // For production, we'll store ALL PDFs as base64 in the response
-      // The frontend will handle storage in Firestore appropriately
-      // This is a temporary solution until we implement Firebase Storage
 
       // Clean up temp file
       try {
@@ -98,22 +94,24 @@ export default async function handler(req, res) {
         console.log("Temp file cleanup error (non-critical):", error.message);
       }
 
-      // Return file data with content for frontend to handle
+      // For production, we ALWAYS store the content and let the frontend handle storage
+      // This ensures PDFs are always available in production
       res.status(200).json({
         success: true,
         filename: newFilename,
         originalName: originalName,
         url: `/api/serve-pdf/${newFilename}`,
         size: file.size,
-        content: base64Content, // Frontend will decide how to store this
+        content: base64Content,
         isBase64: true,
-        environment: "vercel",
-        note: "File processed for serverless environment",
+        environment: "production",
+        storageType: "base64_content",
+        note: "PDF content included for serverless environment",
       });
     } else {
       console.log("Processing for local development");
 
-      // Local development - use file system
+      // Local development - save file AND include content for consistency
       const newPath = path.join(uploadDir, newFilename);
       await fs.rename(file.filepath, newPath);
 
@@ -125,13 +123,18 @@ export default async function handler(req, res) {
         url: fileUrl,
       });
 
+      // Include content for consistency with production
       res.status(200).json({
         success: true,
         filename: newFilename,
         originalName: originalName,
         url: fileUrl,
         size: file.size,
+        content: base64Content,
+        isBase64: true,
         environment: "local",
+        storageType: "file_with_content",
+        note: "PDF saved locally with content backup",
       });
     }
   } catch (error) {

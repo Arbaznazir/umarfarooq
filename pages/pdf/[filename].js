@@ -24,6 +24,7 @@ export default function PDFViewer() {
   const [isLoading, setIsLoading] = useState(true);
   const [pdfInfo, setPdfInfo] = useState(null);
   const [actualFileSize, setActualFileSize] = useState(null);
+  const [canDisplayPDF, setCanDisplayPDF] = useState(false);
 
   useEffect(() => {
     if (filename) {
@@ -47,11 +48,16 @@ export default function PDFViewer() {
         if (contentLength) {
           setActualFileSize(parseInt(contentLength));
         }
+
+        // If we get a successful response, we can display the PDF
+        setCanDisplayPDF(true);
+        console.log("✅ PDF is available for display");
       } else {
         // Get detailed error information
         const errorResponse = await fetch(`/api/serve-pdf/${encodedFilename}`);
         const errorData = await errorResponse.json();
         setError(errorData);
+        setCanDisplayPDF(false);
 
         // Also try to get debug info
         try {
@@ -72,6 +78,7 @@ export default function PDFViewer() {
         message: "Failed to check PDF availability",
         details: err.message,
       });
+      setCanDisplayPDF(false);
     } finally {
       setIsLoading(false);
     }
@@ -79,7 +86,15 @@ export default function PDFViewer() {
 
   const handleDownload = async () => {
     try {
-      // For metadata_only PDFs, we can't download the content
+      // For metadata_only PDFs in production, show helpful message
+      if (error?.isProduction && error?.storageType === "metadata_only") {
+        alert(
+          "This PDF file is too large and is not available for download in production. Please contact the administrator to upload this file to cloud storage."
+        );
+        return;
+      }
+
+      // For other errors or metadata_only in local development
       if (error?.isLargeFile || error?.storageType === "metadata_only") {
         alert(
           "This PDF file is too large and cannot be downloaded directly. Please contact the administrator for access to this file."
@@ -168,7 +183,7 @@ export default function PDFViewer() {
 
         <div className="flex items-center space-x-2">
           {/* Zoom Controls - only show if PDF is viewable */}
-          {!error && (
+          {canDisplayPDF && !error && (
             <div className="flex items-center space-x-2 bg-gray-700 rounded-lg p-2">
               <button
                 onClick={() => adjustZoom(-25)}
@@ -191,7 +206,7 @@ export default function PDFViewer() {
           )}
 
           {/* Action Buttons */}
-          {!error && (
+          {canDisplayPDF && !error && (
             <button
               onClick={toggleFullscreen}
               className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
@@ -204,7 +219,9 @@ export default function PDFViewer() {
           <button
             onClick={handleDownload}
             className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors duration-200"
-            disabled={error?.isLargeFile}
+            disabled={
+              error?.isProduction && error?.storageType === "metadata_only"
+            }
           >
             <Download className="h-4 w-4 mr-2" />
             Download
@@ -227,13 +244,14 @@ export default function PDFViewer() {
               {/* Error Display */}
               <div
                 className={`border-l-4 p-4 rounded-lg ${
-                  error.isLargeFile
+                  error.isLargeFile || error.storageType === "metadata_only"
                     ? "bg-amber-50 border-amber-400"
                     : "bg-red-50 border-red-400"
                 }`}
               >
                 <div className="flex items-center">
-                  {error.isLargeFile ? (
+                  {error.isLargeFile ||
+                  error.storageType === "metadata_only" ? (
                     <Info className="h-6 w-6 text-amber-400 mr-3" />
                   ) : (
                     <AlertTriangle className="h-6 w-6 text-red-400 mr-3" />
@@ -241,16 +259,25 @@ export default function PDFViewer() {
                   <div className="flex-1">
                     <h3
                       className={`font-medium ${
-                        error.isLargeFile ? "text-amber-800" : "text-red-800"
+                        error.isLargeFile ||
+                        error.storageType === "metadata_only"
+                          ? "text-amber-800"
+                          : "text-red-800"
                       }`}
                     >
-                      {error.isLargeFile
-                        ? "Large File Notice"
+                      {error.isLargeFile ||
+                      error.storageType === "metadata_only"
+                        ? error.isProduction
+                          ? "File Not Available in Production"
+                          : "Large File Notice"
                         : "PDF Not Available"}
                     </h3>
                     <p
                       className={`text-sm mt-1 ${
-                        error.isLargeFile ? "text-amber-700" : "text-red-700"
+                        error.isLargeFile ||
+                        error.storageType === "metadata_only"
+                          ? "text-amber-700"
+                          : "text-red-700"
                       }`}
                     >
                       {error.message ||
@@ -262,7 +289,10 @@ export default function PDFViewer() {
                     {error.recommendations && (
                       <ul
                         className={`text-sm mt-3 list-disc list-inside ${
-                          error.isLargeFile ? "text-amber-700" : "text-red-700"
+                          error.isLargeFile ||
+                          error.storageType === "metadata_only"
+                            ? "text-amber-700"
+                            : "text-red-700"
                         }`}
                       >
                         {error.recommendations.map((rec, index) => (
@@ -298,12 +328,17 @@ export default function PDFViewer() {
                           <p>
                             <strong>Post:</strong> {pdfInfo.postTitle}
                           </p>
+                          {error?.isProduction && (
+                            <p>
+                              <strong>Environment:</strong> Production
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
 
                     <div className="mt-4 flex space-x-3">
-                      {!error.isLargeFile && (
+                      {!error.isProduction && !error.isLargeFile && (
                         <button
                           onClick={handleDownload}
                           className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors text-sm"
@@ -335,7 +370,7 @@ export default function PDFViewer() {
                 </div>
               </div>
             </div>
-          ) : (
+          ) : canDisplayPDF ? (
             <div className="relative">
               <iframe
                 src={pdfUrl}
@@ -347,13 +382,14 @@ export default function PDFViewer() {
                   transform: `scale(${zoom / 100})`,
                   transformOrigin: "top left",
                 }}
-                onLoad={() => console.log("PDF loaded in full screen")}
+                onLoad={() => console.log("PDF loaded successfully")}
                 onError={() => {
-                  console.error("PDF failed to load in full screen");
+                  console.error("PDF failed to load in iframe");
                   setError({
                     error: "PDF Viewer Error",
                     message: "The PDF could not be displayed in this viewer.",
                   });
+                  setCanDisplayPDF(false);
                 }}
               />
 
@@ -376,21 +412,34 @@ export default function PDFViewer() {
                 </div>
               </noscript>
             </div>
+          ) : (
+            <div className="flex items-center justify-center h-96">
+              <div className="text-center">
+                <AlertTriangle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  PDF Not Available
+                </h3>
+                <p className="text-gray-600">
+                  This PDF file could not be loaded or displayed.
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>
 
       {/* Islamic Footer */}
-      <div className="bg-gray-800 text-white p-4 text-center border-t border-gray-700">
-        <p className="text-sm text-gray-300">
-          <span className="quranic-text text-islamic-green">
-            وَقُل رَّبِّ زِدْنِي عِلْمًا
-          </span>
-          <br />
-          <span className="italic">
+      <div className="bg-gradient-to-r from-islamic-green to-emerald-600 text-white py-8">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <div className="mb-4">
+            <p className="text-lg font-amiri text-arabic leading-relaxed">
+              وَقُل رَّبِّ زِدْنِي عِلْمًا
+            </p>
+          </div>
+          <p className="text-emerald-100 italic">
             "And say: My Lord, increase me in knowledge" - Quran 20:114
-          </span>
-        </p>
+          </p>
+        </div>
       </div>
     </div>
   );

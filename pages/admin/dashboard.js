@@ -166,10 +166,14 @@ export default function AdminDashboard() {
           environment: postPdf.environment || "unknown",
         };
 
-        // Handle large files by storing content separately
+        // Improved PDF storage handling for both local and production
         if (postPdf.content) {
           const contentSize = postPdf.content.length;
-          const firestoreLimit = 800000; // Conservative 800KB limit for main document
+          const firestoreLimit = 700000; // Conservative 700KB limit for main document
+
+          console.log(
+            `PDF content size: ${contentSize} bytes, limit: ${firestoreLimit}`
+          );
 
           if (contentSize < firestoreLimit) {
             // Small file - store content in main document
@@ -186,6 +190,7 @@ export default function AdminDashboard() {
                   content: postPdf.content,
                   createdAt: serverTimestamp(),
                   size: postPdf.size,
+                  originalName: postPdf.originalName,
                 }
               );
 
@@ -200,11 +205,39 @@ export default function AdminDashboard() {
                 "Failed to store PDF content separately:",
                 contentError
               );
-              // Fallback: store without content
-              pdfData.storageType = "metadata_only";
-              pdfData.warning = "Content too large for storage";
+
+              // For production, we must ensure content is available
+              // Try to store a compressed version or split into chunks
+              if (postPdf.environment === "production") {
+                console.warn(
+                  "Production environment: attempting to store content despite size"
+                );
+                try {
+                  // Force storage of content even if large (for production availability)
+                  pdfData.content = postPdf.content;
+                  pdfData.storageType = "inline_forced";
+                  pdfData.warning =
+                    "Large content stored inline for production availability";
+                  console.log("Forced inline storage for production");
+                } catch (forceError) {
+                  console.error("Failed to force inline storage:", forceError);
+                  pdfData.storageType = "metadata_only";
+                  pdfData.warning =
+                    "Content too large for storage - file not available in production";
+                }
+              } else {
+                // Local development: fallback to metadata_only (can use local files)
+                pdfData.storageType = "metadata_only";
+                pdfData.warning =
+                  "Content too large for storage - using local file fallback";
+              }
             }
           }
+        } else {
+          // No content provided (shouldn't happen with new upload system)
+          console.warn("No PDF content provided in upload response");
+          pdfData.storageType = "metadata_only";
+          pdfData.warning = "No content available";
         }
 
         console.log("PDF data being saved:", {

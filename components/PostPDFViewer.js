@@ -97,6 +97,15 @@ export default function PostPDFViewer({ pdfAttachment }) {
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
           return;
+        } else {
+          // Check if this is a production error
+          const errorData = await response.json();
+          if (errorData.isProduction) {
+            alert(
+              "This PDF file is too large and is not available for download in production. Please contact the administrator to upload this file to cloud storage."
+            );
+            return;
+          }
         }
 
         // Fallback to opening in new tab
