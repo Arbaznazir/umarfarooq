@@ -7,6 +7,8 @@ import {
   AlertTriangle,
   ExternalLink,
   Info,
+  Eye,
+  RefreshCw,
 } from "lucide-react";
 import FaviconHead from "../../components/FaviconHead";
 import ReactPDFViewer from "../../components/ReactPDFViewer";
@@ -20,6 +22,8 @@ export default function PDFViewer() {
   const [pdfInfo, setPdfInfo] = useState(null);
   const [actualFileSize, setActualFileSize] = useState(null);
   const [canDisplayPDF, setCanDisplayPDF] = useState(false);
+  const [viewMode, setViewMode] = useState("auto"); // auto, react-pdf, iframe, direct
+  const [showReactPDF, setShowReactPDF] = useState(true);
 
   useEffect(() => {
     if (filename) {
@@ -117,6 +121,25 @@ export default function PDFViewer() {
     }
   };
 
+  const handleReactPDFError = () => {
+    console.log("React-PDF failed, switching to iframe fallback");
+    setShowReactPDF(false);
+  };
+
+  const handleRetry = () => {
+    setShowReactPDF(true);
+    setError(null);
+    if (filename) {
+      const encodedFilename = encodeURIComponent(filename);
+      checkPDFAvailability(encodedFilename);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "Unknown size";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  };
+
   if (!filename) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -156,17 +179,21 @@ export default function PDFViewer() {
               </h1>
               {(pdfInfo?.pdfAttachment?.size || actualFileSize) && (
                 <span className="text-sm text-gray-500">
-                  {(
-                    (actualFileSize || pdfInfo.pdfAttachment.size) /
-                    (1024 * 1024)
-                  ).toFixed(2)}{" "}
-                  MB
+                  {formatFileSize(actualFileSize || pdfInfo.pdfAttachment.size)}
                 </span>
               )}
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
+            <button
+              onClick={handleRetry}
+              className="flex items-center px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+              title="Retry loading PDF"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </button>
             <button
               onClick={handleDownload}
               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
@@ -200,159 +227,182 @@ export default function PDFViewer() {
                   : "bg-red-50 border-red-400"
               }`}
             >
-              <div className="flex items-center">
-                {error.isLargeFile || error.storageType === "metadata_only" ? (
-                  <Info className="h-6 w-6 text-amber-400 mr-3" />
-                ) : (
-                  <AlertTriangle className="h-6 w-6 text-red-400 mr-3" />
-                )}
-                <div className="flex-1">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  {error.isLargeFile ||
+                  error.storageType === "metadata_only" ? (
+                    <Info className="h-5 w-5 text-amber-400" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
+                  )}
+                </div>
+                <div className="ml-3 flex-1">
                   <h3
-                    className={`font-medium ${
+                    className={`text-sm font-medium ${
                       error.isLargeFile || error.storageType === "metadata_only"
                         ? "text-amber-800"
                         : "text-red-800"
                     }`}
                   >
                     {error.isLargeFile || error.storageType === "metadata_only"
-                      ? error.isProduction
-                        ? "File Not Available in Production"
-                        : "Large File Notice"
-                      : "PDF Not Available"}
+                      ? "Large File Notice"
+                      : "PDF Loading Error"}
                   </h3>
-                  <p
-                    className={`text-sm mt-1 ${
+                  <div
+                    className={`mt-2 text-sm ${
                       error.isLargeFile || error.storageType === "metadata_only"
                         ? "text-amber-700"
                         : "text-red-700"
                     }`}
                   >
-                    {error.message ||
-                      error.details ||
-                      "This PDF file could not be loaded."}
-                  </p>
+                    <p>{error.message || "Failed to load PDF document"}</p>
+                    {error.details && (
+                      <p className="mt-1 text-xs opacity-75">{error.details}</p>
+                    )}
+                  </div>
 
-                  {/* Show recommendations if available */}
-                  {error.recommendations && (
-                    <ul
-                      className={`text-sm mt-3 list-disc list-inside ${
+                  {/* Action buttons */}
+                  <div className="mt-4 flex space-x-3">
+                    <button
+                      onClick={handleDownload}
+                      disabled={
+                        error.isProduction &&
+                        error.storageType === "metadata_only"
+                      }
+                      className={`text-sm px-3 py-1 rounded transition-colors ${
                         error.isLargeFile ||
                         error.storageType === "metadata_only"
-                          ? "text-amber-700"
-                          : "text-red-700"
-                      }`}
+                          ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                          : "bg-red-100 text-red-800 hover:bg-red-200"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
-                      {error.recommendations.map((rec, index) => (
-                        <li key={index}>{rec}</li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {/* File Info */}
-                  {pdfInfo && (
-                    <div className="mt-4 p-3 bg-gray-100 rounded text-sm">
-                      <h4 className="font-medium text-gray-800 mb-2">
-                        File Information:
-                      </h4>
-                      <div className="space-y-1 text-gray-600">
-                        <p>
-                          <strong>Original Name:</strong>{" "}
-                          {pdfInfo.pdfAttachment?.originalName}
-                        </p>
-                        <p>
-                          <strong>Size:</strong>{" "}
-                          {pdfInfo.pdfAttachment?.size
-                            ? (
-                                pdfInfo.pdfAttachment.size /
-                                (1024 * 1024)
-                              ).toFixed(2) + " MB"
-                            : "Unknown"}
-                        </p>
-                        <p>
-                          <strong>Storage Type:</strong>{" "}
-                          {pdfInfo.pdfAttachment?.storageType || "Unknown"}
-                        </p>
-                        <p>
-                          <strong>Post:</strong> {pdfInfo.postTitle}
-                        </p>
-                        {error?.isProduction && (
-                          <p>
-                            <strong>Environment:</strong> Production
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex space-x-3">
-                    {!error.isProduction && !error.isLargeFile && (
-                      <button
-                        onClick={handleDownload}
-                        className="inline-flex items-center px-3 py-2 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors text-sm"
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Try Download
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => router.back()}
-                      className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-800 rounded hover:bg-gray-200 transition-colors text-sm"
-                    >
-                      <ArrowLeft className="h-4 w-4 mr-1" />
-                      Go Back
+                      <Download className="h-3 w-3 mr-1 inline" />
+                      Download PDF
                     </button>
-
-                    {pdfInfo?.postId && (
-                      <a
-                        href={`/post/${pdfInfo.postId}`}
-                        className="inline-flex items-center px-3 py-2 bg-green-100 text-green-800 rounded hover:bg-green-200 transition-colors text-sm"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        View Post
-                      </a>
-                    )}
+                    <button
+                      onClick={handleRetry}
+                      className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 transition-colors"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1 inline" />
+                      Retry
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Debug Information */}
+            {pdfInfo && process.env.NODE_ENV === "development" && (
+              <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-2">Debug Info</h4>
+                <pre className="text-xs text-gray-600 overflow-auto">
+                  {JSON.stringify(pdfInfo, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         ) : canDisplayPDF ? (
-          <div className="max-w-6xl mx-auto">
-            <ReactPDFViewer
-              pdfUrl={pdfUrl}
-              filename={filename}
-              onDownload={handleDownload}
-              className="shadow-xl"
-            />
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            {/* PDF Viewer Mode Selector */}
+            <div className="bg-blue-50 border-b border-blue-200 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center text-blue-600">
+                  <Eye className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">
+                    PDF Document Viewer
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowReactPDF(true)}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${
+                      showReactPDF
+                        ? "bg-blue-600 text-white"
+                        : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    }`}
+                  >
+                    Advanced
+                  </button>
+                  <button
+                    onClick={() => setShowReactPDF(false)}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${
+                      !showReactPDF
+                        ? "bg-blue-600 text-white"
+                        : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    }`}
+                  >
+                    Simple
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* PDF Content */}
+            {showReactPDF ? (
+              <ReactPDFViewer
+                pdfUrl={pdfUrl}
+                filename={filename}
+                onDownload={handleDownload}
+                onError={handleReactPDFError}
+                className="border-0"
+              />
+            ) : (
+              <div className="p-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center">
+                    <Info className="h-4 w-4 text-blue-600 mr-2" />
+                    <p className="text-sm text-blue-800">
+                      Simple PDF Viewer - Using browser's built-in PDF display
+                    </p>
+                  </div>
+                </div>
+                <iframe
+                  src={pdfUrl}
+                  className="w-full border border-gray-300 rounded-lg"
+                  style={{ height: "80vh", minHeight: "600px" }}
+                  title={filename}
+                />
+                <div className="mt-4 flex justify-center space-x-4">
+                  <button
+                    onClick={handleDownload}
+                    className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </button>
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open in New Tab
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-center h-96">
             <div className="text-center">
-              <AlertTriangle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">
                 PDF Not Available
-              </h3>
-              <p className="text-gray-600">
-                This PDF file could not be loaded or displayed.
+              </h2>
+              <p className="text-gray-600 mb-4">
+                The requested PDF document could not be loaded.
               </p>
+              <button
+                onClick={handleRetry}
+                className="flex items-center px-4 py-2 bg-islamic-green text-white rounded-lg hover:bg-emerald-600 transition-colors mx-auto"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </button>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Islamic Footer */}
-      <div className="bg-gradient-to-r from-islamic-green to-emerald-600 text-white py-8 mt-8">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <div className="mb-4">
-            <p className="text-lg font-amiri text-arabic leading-relaxed">
-              وَقُل رَّبِّ زِدْنِي عِلْمًا
-            </p>
-          </div>
-          <p className="text-emerald-100 italic">
-            "And say: My Lord, increase me in knowledge" - Quran 20:114
-          </p>
-        </div>
       </div>
     </div>
   );

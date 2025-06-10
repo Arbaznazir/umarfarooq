@@ -101,8 +101,8 @@ export default async function handler(req, res) {
           );
 
           // Set headers to allow iframe embedding before redirect
-          res.setHeader("X-Frame-Options", "ALLOWALL");
-          res.setHeader("Content-Security-Policy", "frame-ancestors *;");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
 
           // Use our proxy endpoint for Google Drive files
           const proxyUrl = `/api/serve-gdrive-pdf/${pdfData.driveFileId}`;

@@ -19,7 +19,7 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
-          // Completely remove X-Frame-Options to allow iframe embedding
+          // DO NOT set X-Frame-Options globally - let individual endpoints handle it
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
@@ -52,11 +52,7 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
           },
-          // Explicitly allow iframe embedding for PDF files
-          {
-            key: "X-Frame-Options",
-            value: "ALLOWALL",
-          },
+          // Remove X-Frame-Options to allow iframe embedding
         ],
       },
       {
@@ -74,11 +70,7 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Explicitly allow iframe embedding for PDF endpoints
-          {
-            key: "X-Frame-Options",
-            value: "ALLOWALL",
-          },
+          // Remove X-Frame-Options to allow iframe embedding
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
@@ -100,11 +92,7 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Explicitly allow iframe embedding for PDF endpoints
-          {
-            key: "X-Frame-Options",
-            value: "ALLOWALL",
-          },
+          // Remove X-Frame-Options to allow iframe embedding
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
@@ -114,11 +102,7 @@ const nextConfig = {
       {
         source: "/pdf/:path*",
         headers: [
-          // Allow iframe embedding for PDF viewer pages
-          {
-            key: "X-Frame-Options",
-            value: "ALLOWALL",
-          },
+          // Remove X-Frame-Options to allow iframe embedding of PDF viewer pages
         ],
       },
     ];
