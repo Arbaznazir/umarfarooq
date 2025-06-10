@@ -19,7 +19,6 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
-          // DO NOT set X-Frame-Options globally - let individual endpoints handle it
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
@@ -52,7 +51,6 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
           },
-          // Remove X-Frame-Options to allow iframe embedding
         ],
       },
       {
@@ -70,7 +68,6 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Remove X-Frame-Options to allow iframe embedding
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
@@ -92,17 +89,10 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Remove X-Frame-Options to allow iframe embedding
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
           },
-        ],
-      },
-      {
-        source: "/pdf/:path*",
-        headers: [
-          // Remove X-Frame-Options to allow iframe embedding of PDF viewer pages
         ],
       },
     ];
