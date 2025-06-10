@@ -19,10 +19,11 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
-          {
-            key: "X-Frame-Options",
-            value: "SAMEORIGIN",
-          },
+          // Remove X-Frame-Options for PDF endpoints to allow iframe embedding
+          // {
+          //   key: "X-Frame-Options",
+          //   value: "SAMEORIGIN",
+          // },
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
@@ -54,6 +55,50 @@ const nextConfig = {
           {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/api/serve-pdf/:path*",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/pdf",
+          },
+          {
+            key: "Content-Disposition",
+            value: "inline",
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600",
+          },
+          // Allow iframe embedding for PDF endpoints
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+        ],
+      },
+      {
+        source: "/api/serve-gdrive-pdf/:path*",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/pdf",
+          },
+          {
+            key: "Content-Disposition",
+            value: "inline",
+          },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=3600",
+          },
+          // Allow iframe embedding for PDF endpoints
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
           },
         ],
       },

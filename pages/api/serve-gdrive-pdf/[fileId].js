@@ -109,7 +109,7 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", "public, max-age=3600"); // Cache for 1 hour
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    // Remove X-Frame-Options to allow iframe embedding
     res.setHeader("X-Content-Type-Options", "nosniff");
 
     console.log("✅ Serving PDF via proxy, size:", buffer.length);
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
         res.setHeader("Cache-Control", "public, max-age=3600");
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-        res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        // Remove X-Frame-Options to allow iframe embedding
         res.setHeader("X-Content-Type-Options", "nosniff");
 
         console.log(
