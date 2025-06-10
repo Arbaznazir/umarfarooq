@@ -17,6 +17,7 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Apply to all routes - completely disable X-Frame-Options
         source: "/(.*)",
         headers: [
           {
@@ -31,12 +32,11 @@ const nextConfig = {
             key: "X-XSS-Protection",
             value: "1; mode=block",
           },
+          // Completely permissive CSP for PDF functionality
           {
             key: "Content-Security-Policy",
             value:
-              process.env.NODE_ENV === "development"
-                ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:; frame-src 'self' data: blob: https:; object-src 'self' data: blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com https://unpkg.com;"
-                : "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://*.firebaseapp.com https://*.googleapis.com https://apis.google.com https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.google-analytics.com wss://*.firebaseio.com https://*.firebasedatabase.app; frame-src 'self' data: blob: https:; object-src 'self' data: blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com https://unpkg.com;",
+              "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; font-src * data:; img-src * data: blob:; connect-src *; frame-src *; object-src *; worker-src * blob: data:; frame-ancestors *;",
           },
         ],
       },
@@ -92,6 +92,17 @@ const nextConfig = {
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
+          },
+        ],
+      },
+      {
+        source: "/pdf/:path*",
+        headers: [
+          // Permissive CSP for PDF viewer
+          {
+            key: "Content-Security-Policy",
+            value:
+              "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; worker-src * blob: data:; frame-ancestors *;",
           },
         ],
       },
