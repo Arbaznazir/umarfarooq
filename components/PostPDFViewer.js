@@ -78,6 +78,18 @@ export default function PostPDFViewer({ pdfAttachment }) {
       return;
     }
 
+    // For Google Drive PDFs, always open in new tab to avoid iframe issues
+    if (
+      pdfAttachment.storageType === "google_drive" ||
+      pdfAttachment.driveFileId
+    ) {
+      window.open(
+        `/pdf/${encodeURIComponent(pdfAttachment.filename)}`,
+        "_blank"
+      );
+      return;
+    }
+
     setIsLoading(true);
     setHasError(false);
 
