@@ -19,6 +19,7 @@ export default function PostPDFViewer({ pdfAttachment }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [errorData, setErrorData] = useState(null);
   const [actualFileSize, setActualFileSize] = useState(null);
+  const [showIframeFallback, setShowIframeFallback] = useState(false);
 
   if (!pdfAttachment) return null;
 
@@ -65,6 +66,10 @@ export default function PostPDFViewer({ pdfAttachment }) {
     !pdfAttachment.content &&
     !pdfAttachment.contentDocId;
 
+  // Check if this is a Google Drive PDF
+  const isGoogleDrivePDF =
+    pdfAttachment.storageType === "google_drive" || pdfAttachment.driveFileId;
+
   // Use actual file size if available, otherwise fall back to stored size
   const displaySize = actualFileSize || pdfAttachment.size || 0;
 
@@ -78,11 +83,8 @@ export default function PostPDFViewer({ pdfAttachment }) {
       return;
     }
 
-    // For Google Drive PDFs, always open in new tab to avoid iframe issues
-    if (
-      pdfAttachment.storageType === "google_drive" ||
-      pdfAttachment.driveFileId
-    ) {
+    // For Google Drive PDFs in production, always open in new tab to avoid iframe issues
+    if (isGoogleDrivePDF && process.env.NODE_ENV === "production") {
       window.open(
         `/pdf/${encodeURIComponent(pdfAttachment.filename)}`,
         "_blank"
@@ -213,6 +215,11 @@ export default function PostPDFViewer({ pdfAttachment }) {
     }
   };
 
+  const handleReactPDFError = () => {
+    console.log("React-PDF failed, switching to iframe fallback");
+    setShowIframeFallback(true);
+  };
+
   return (
     <div className="my-8 border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
       {/* PDF Header */}
@@ -231,6 +238,11 @@ export default function PostPDFViewer({ pdfAttachment }) {
                 {actualFileSize && actualFileSize !== pdfAttachment.size && (
                   <span className="text-xs text-green-600 ml-1">
                     (actual size)
+                  </span>
+                )}
+                {isGoogleDrivePDF && (
+                  <span className="text-xs text-blue-600 ml-1">
+                    • Google Drive
                   </span>
                 )}
               </p>
@@ -383,15 +395,54 @@ export default function PostPDFViewer({ pdfAttachment }) {
         </div>
       )}
 
-      {/* React PDF Viewer */}
+      {/* PDF Viewer */}
       {isExpanded && !hasError && !isMetadataOnly && (
         <div className="relative">
-          <ReactPDFViewer
-            pdfUrl={pdfUrl}
-            filename={pdfAttachment.originalName}
-            onDownload={handleDownload}
-            className="border-0"
-          />
+          {!showIframeFallback ? (
+            <ReactPDFViewer
+              pdfUrl={pdfUrl}
+              filename={pdfAttachment.originalName}
+              onDownload={handleDownload}
+              onError={handleReactPDFError}
+              className="border-0"
+            />
+          ) : (
+            <div className="bg-gray-50 p-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center">
+                  <Info className="h-4 w-4 text-blue-600 mr-2" />
+                  <p className="text-sm text-blue-800">
+                    PDF Document Viewer - Displaying with browser's built-in PDF
+                    viewer
+                  </p>
+                </div>
+              </div>
+              <iframe
+                src={pdfUrl}
+                className="w-full h-96 border border-gray-300 rounded-lg"
+                title={pdfAttachment.originalName}
+                style={{ minHeight: "600px" }}
+              />
+              <div className="mt-4 flex justify-center space-x-4">
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PDF
+                </button>
+                <a
+                  href={`/pdf/${encodeURIComponent(pdfAttachment.filename)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in New Tab
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Collapse Button */}
           <button
@@ -414,6 +465,11 @@ export default function PostPDFViewer({ pdfAttachment }) {
           <p className="text-xs text-amber-600 mt-1">
             ⚠️ This is a large file. For best experience, use "Download" or
             "Full Screen" options.
+          </p>
+        )}
+        {isGoogleDrivePDF && (
+          <p className="text-xs text-blue-600 mt-1">
+            ☁️ This PDF is stored on Google Drive for fast, reliable access
           </p>
         )}
         {actualFileSize && actualFileSize !== pdfAttachment.size && (

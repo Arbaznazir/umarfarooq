@@ -19,11 +19,7 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
-          // Remove X-Frame-Options for PDF endpoints to allow iframe embedding
-          // {
-          //   key: "X-Frame-Options",
-          //   value: "SAMEORIGIN",
-          // },
+          // Completely remove X-Frame-Options to allow iframe embedding
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
@@ -41,7 +37,7 @@ const nextConfig = {
             value:
               process.env.NODE_ENV === "development"
                 ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:; frame-src 'self' data: blob: https:; object-src 'self' data: blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com https://unpkg.com;"
-                : "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://*.firebaseapp.com https://*.googleapis.com https://apis.google.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.google-analytics.com wss://*.firebaseio.com https://*.firebasedatabase.app; frame-src 'self' data: blob: https:; object-src 'self' data: blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com;",
+                : "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://*.firebaseapp.com https://*.googleapis.com https://apis.google.com https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://*.google-analytics.com wss://*.firebaseio.com https://*.firebasedatabase.app; frame-src 'self' data: blob: https:; object-src 'self' data: blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com https://unpkg.com;",
           },
         ],
       },
@@ -55,6 +51,11 @@ const nextConfig = {
           {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
+          },
+          // Explicitly allow iframe embedding for PDF files
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
           },
         ],
       },
@@ -73,7 +74,11 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Allow iframe embedding for PDF endpoints
+          // Explicitly allow iframe embedding for PDF endpoints
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
@@ -95,10 +100,24 @@ const nextConfig = {
             key: "Cache-Control",
             value: "public, max-age=3600",
           },
-          // Allow iframe embedding for PDF endpoints
+          // Explicitly allow iframe embedding for PDF endpoints
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
           {
             key: "Access-Control-Allow-Origin",
             value: "*",
+          },
+        ],
+      },
+      {
+        source: "/pdf/:path*",
+        headers: [
+          // Allow iframe embedding for PDF viewer pages
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
           },
         ],
       },

@@ -20,6 +20,7 @@ export default function ReactPDFViewer({
   pdfUrl,
   filename,
   onDownload,
+  onError,
   className = "",
 }) {
   const [numPages, setNumPages] = useState(null);
@@ -37,11 +38,19 @@ export default function ReactPDFViewer({
     console.log(`PDF loaded successfully. Pages: ${numPages}`);
   }, []);
 
-  const onDocumentLoadError = useCallback((error) => {
-    console.error("PDF loading error:", error);
-    setError(error);
-    setIsLoading(false);
-  }, []);
+  const onDocumentLoadError = useCallback(
+    (error) => {
+      console.error("PDF loading error:", error);
+      setError(error);
+      setIsLoading(false);
+
+      // Call the onError callback if provided to trigger fallback
+      if (onError) {
+        onError(error);
+      }
+    },
+    [onError]
+  );
 
   const goToPrevPage = () => {
     setPageNumber((prev) => Math.max(1, prev - 1));
