@@ -15,29 +15,34 @@ const db = getFirestore(app);
 
 // Environment check helper
 function debugEnvironment() {
-  console.log("🔍 Debug: Environment variables check:");
-  console.log("NODE_ENV:", process.env.NODE_ENV);
-  console.log(
-    "NEXT_PUBLIC_FIREBASE_API_KEY:",
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "✅ Loaded" : "❌ Missing"
-  );
-  console.log(
-    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:",
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ? "✅ Loaded" : "❌ Missing"
-  );
-  console.log(
-    "NEXT_PUBLIC_FIREBASE_PROJECT_ID:",
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ? "✅ Loaded" : "❌ Missing"
-  );
+  // Only log environment debug info once per session in development
+  if (process.env.NODE_ENV === "development" && !global.envDebugLogged) {
+    console.log("🔍 Debug: Environment variables check:");
+    console.log("NODE_ENV:", process.env.NODE_ENV);
+    console.log(
+      "NEXT_PUBLIC_FIREBASE_API_KEY:",
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "✅ Loaded" : "❌ Missing"
+    );
+    console.log(
+      "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:",
+      process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ? "✅ Loaded" : "❌ Missing"
+    );
+    console.log(
+      "NEXT_PUBLIC_FIREBASE_PROJECT_ID:",
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ? "✅ Loaded" : "❌ Missing"
+    );
 
-  if (
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
-    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN &&
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  ) {
-    console.log("✅ All Firebase environment variables loaded successfully");
-  } else {
-    console.log("❌ Some Firebase environment variables are missing");
+    if (
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
+      process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN &&
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    ) {
+      console.log("✅ All Firebase environment variables loaded successfully");
+    } else {
+      console.log("❌ Some Firebase environment variables are missing");
+    }
+
+    global.envDebugLogged = true;
   }
 }
 
@@ -50,23 +55,27 @@ export default async function handler(req, res) {
   const decodedFilename = decodeURIComponent(filename);
   const sanitizedFilename = decodedFilename.replace(/[<>:"/\\|?*]/g, "_");
 
-  console.log("🔍 Serving PDF:", {
-    original: filename,
-    decoded: decodedFilename,
-    sanitized: sanitizedFilename,
-  });
+  // Only log PDF serving details in development to reduce spam
+  if (process.env.NODE_ENV === "development") {
+    console.log("🔍 Serving PDF:", {
+      original: filename,
+      decoded: decodedFilename,
+      sanitized: sanitizedFilename,
+    });
+  }
 
   try {
     const isVercel =
       process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_REGION;
 
-    console.log("🌍 Environment check:", {
-      isVercel: !!isVercel,
-      filename: sanitizedFilename,
-    });
-
     // Step 1: Check database for Google Drive files FIRST
-    console.log("🔍 Querying database for Google Drive PDF");
+    if (process.env.NODE_ENV === "development") {
+      console.log("🌍 Environment check:", {
+        isVercel: !!isVercel,
+        filename: sanitizedFilename,
+      });
+      console.log("🔍 Querying database for Google Drive PDF");
+    }
     try {
       const postsRef = collection(db, "posts");
       const q = query(
@@ -106,7 +115,8 @@ export default async function handler(req, res) {
 
           // Use our proxy endpoint for Google Drive files
           const proxyUrl = `/api/serve-gdrive-pdf/${pdfData.driveFileId}`;
-          return res.redirect(302, proxyUrl);
+          res.redirect(302, proxyUrl);
+          return;
         }
 
         // Priority 2: Base64 content (legacy files)

@@ -34,18 +34,23 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing file ID" });
   }
 
-  // Debug environment variables in production
-  console.log("🔍 Environment check:", {
-    NODE_ENV: process.env.NODE_ENV,
-    VERCEL: !!process.env.VERCEL,
-    hasServiceAccountEmail: !!GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    hasServiceAccountKey: !!GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
-    serviceAccountEmailLength: GOOGLE_SERVICE_ACCOUNT_EMAIL?.length || 0,
-    privateKeyLength: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.length || 0,
-  });
+  // Debug environment variables in production (only once per session)
+  if (!global.gdriveEnvDebugLogged) {
+    console.log("🔍 Google Drive Environment check:", {
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL: !!process.env.VERCEL,
+      hasServiceAccountEmail: !!GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      hasServiceAccountKey: !!GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
+      serviceAccountEmailLength: GOOGLE_SERVICE_ACCOUNT_EMAIL?.length || 0,
+      privateKeyLength: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.length || 0,
+    });
+    global.gdriveEnvDebugLogged = true;
+  }
 
   try {
-    console.log("🌐 Proxying PDF from Google Drive:", fileId);
+    if (process.env.NODE_ENV === "development") {
+      console.log("🌐 Proxying PDF from Google Drive:", fileId);
+    }
 
     if (!drive) {
       console.error("❌ Google Drive Service Account not initialized");
@@ -80,7 +85,9 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log("✅ Successfully fetched PDF from Google Drive");
+    if (process.env.NODE_ENV === "development") {
+      console.log("✅ Successfully fetched PDF from Google Drive");
+    }
 
     // Handle different data types from Google Drive API
     let buffer;
@@ -111,7 +118,9 @@ export default async function handler(req, res) {
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("X-Content-Type-Options", "nosniff");
 
-    console.log("✅ Serving PDF via proxy, size:", buffer.length);
+    if (process.env.NODE_ENV === "development") {
+      console.log("✅ Serving PDF via proxy, size:", buffer.length);
+    }
     return res.send(buffer);
   } catch (error) {
     console.error("💥 Google Drive proxy error:", error);

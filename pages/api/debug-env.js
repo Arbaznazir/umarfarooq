@@ -7,6 +7,11 @@ export default function handler(req, res) {
     return res.status(404).json({ error: "Not found" });
   }
 
+  // Prevent repeated calls by checking if this is a HEAD request
+  if (req.method === "HEAD") {
+    return res.status(200).end();
+  }
+
   const envCheck = {
     NODE_ENV: process.env.NODE_ENV,
 
@@ -66,12 +71,15 @@ export default function handler(req, res) {
   const missingVars = criticalVars.filter((varName) => !process.env[varName]);
   const allConfigured = missingVars.length === 0;
 
-  console.log("🔍 Environment Variables Check:", envCheck);
+  // Only log in development to reduce console spam
+  if (process.env.NODE_ENV === "development") {
+    console.log("🔍 Environment Variables Check:", envCheck);
 
-  if (missingVars.length > 0) {
-    console.log("❌ Missing critical environment variables:", missingVars);
-  } else {
-    console.log("✅ All critical environment variables are configured");
+    if (missingVars.length > 0) {
+      console.log("❌ Missing critical environment variables:", missingVars);
+    } else {
+      console.log("✅ All critical environment variables are configured");
+    }
   }
 
   res.status(200).json({
